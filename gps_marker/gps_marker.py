@@ -26,7 +26,7 @@ https://bitbucket.org/chchrsc/tuiview/wiki/Plugins
 import gps
 from tuiview import pluginmanager
 from PyQt4.QtCore import SIGNAL, QObject, QTimer
-from PyQt4.QtGui import QAction, QApplication
+from PyQt4.QtGui import QAction, QApplication, QMessageBox
 from osgeo import osr
 
 # set in action() below
@@ -98,10 +98,14 @@ class GPSMarker(QObject):
         self.loggingEnabled = state
 
     def startLogging(self):
-        if self.gpsd is None:
-            self.gpsd = gps.GPS(mode=gps.WATCH_ENABLE)
-        else:
-            self.gpsd.stream(gps.WATCH_ENABLE)
+        try:
+            if self.gpsd is None:
+                self.gpsd = gps.GPS(mode=gps.WATCH_ENABLE)
+            else:
+                self.gpsd.stream(gps.WATCH_ENABLE)
+        except OSError: 
+            QMessageBox.critical(self.viewer, name(), "Unable to connect to GPS")
+            return
 
         if self.timer is None:
             self.timer = QTimer()
