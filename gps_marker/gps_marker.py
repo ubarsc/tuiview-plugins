@@ -25,9 +25,11 @@ https://bitbucket.org/chchrsc/tuiview/wiki/Plugins
 # Python3 version of bindings here: https://github.com/tpoche/gps-python3
 import gps
 from tuiview import pluginmanager
-from PyQt4.QtCore import SIGNAL, QObject, QTimer
+from tuiview.viewerlayers import CURSOR_CROSSHAIR
+from PyQt4.QtCore import SIGNAL, QObject, QTimer, Qt
 from PyQt4.QtGui import QAction, QApplication, QMessageBox
 from osgeo import osr
+import math
 
 # set in action() below
 GEOLINKED_VIEWERS = None
@@ -121,6 +123,7 @@ class GPSMarker(QObject):
         if self.timer is not None:
             self.timer.stop()
 
+        GEOLINKED_VIEWERS.removeQueryPointAll(id(self))
         self.setEnableLogging(True)
         if updateOthers:
             self.setOtherGPSMarkerState(True)
@@ -134,13 +137,18 @@ class GPSMarker(QObject):
             for viewer in GEOLINKED_VIEWERS.viewers:
                 layer = viewer.viewwidget.layers.getTopRasterLayer()
                 if layer is not None:
-                    wkt = layer.gdalDataset.GetGetTransform()
+                    wkt = layer.gdalDataset.GetProjection()
                     if wkt is not None and wkt != '':
                         gpsSR = osr.SpatialReference()
-                        gpsSR.ImportFromEPSG(4327) # what GPS uses apparently
+                        # GPS uses 4328 but I can't get to work with 
+                        # GDAL so using 4326 instead. Hopefully not a big difference...
+                        gpsSR.ImportFromEPSG(4326)
                         tuiviewSR = osr.SpatialReference()
                         tuiviewSR.ImportFromWkt(wkt)
-                        self.coordTrans = osr.CoordinateTransformation(gpsSR, tuiviewSR)
+                        self.coordTrans = osr.CreateCoordinateTransformation(gpsSR, tuiviewSR)
+                        if self.coordTrans is None:
+                            print('Unable to create coordinate transform. ' + 
+                                    'Check GDAL built with proj.4 support')
                         break
                         
 
@@ -154,12 +162,21 @@ class GPSMarker(QObject):
                 # still could have failed
                 if self.coordTrans is not None:
 
-                    print(report)
-                
-                    print(self.gpsd.fix.longitude, self.gpsd.fix.latitude)
+                    long = self.gpsd.fix.longitude
+                    lat = self.gpsd.fix.latitude
+                    if (lat != 0 and not math.isnan(lat) and 
+                            long != 0 and not math.isnan(long)):
+                        (easting, northing, z) = self.coordTrans.TransformPoint(long, lat)
+                        if easting == 0 or northing == 0:
+                            print('coord transform failed')
+                        else:
+                            GEOLINKED_VIEWERS.setQueryPointAll(id(self), 
+                                easting, northing, Qt.white, 
+                                cursor=CURSOR_CROSSHAIR, size=5)
+
             except StopIteration:
                 # no data
-                pass
+                print('no data')
 
 
 def action(actioncode, viewer):
