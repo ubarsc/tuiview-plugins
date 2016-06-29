@@ -57,6 +57,7 @@ class Recode(QObject):
 
         self.recodeAct = QAction(self)
         self.recodeAct.setText("Recode Polygon")
+        self.recodeAct.setEnabled(False)
         self.connect(self.recodeAct, SIGNAL("triggered()"), self.recodePolygon)
 
         recodeMenu = viewer.menuBar().addMenu("&Recode")
@@ -91,6 +92,7 @@ class Recode(QObject):
             self.recodeLayer = newLayer
 
             self.startAct.setEnabled(False)
+            self.recodeAct.setEnabled(True)
 
     def recodePolygon(self):
         self.viewer.viewwidget.setActiveTool(VIEWER_TOOL_POLYGON, id(self))
@@ -99,7 +101,6 @@ class Recode(QObject):
         self.viewer.viewwidget.setActiveTool(VIEWER_TOOL_NONE, id(self))
 
         geom = toolInfo.getOGRGeometry()
-        print('area', geom.GetArea(), geom.ExportToWkt())
 
         dlg = RecodeDialog(self.viewer)
         if dlg.exec_() == RecodeDialog.Accepted:
