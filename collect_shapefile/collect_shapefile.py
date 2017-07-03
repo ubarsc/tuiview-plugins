@@ -26,8 +26,8 @@ from tuiview import pluginmanager
 from tuiview import viewerlayers
 from tuiview.viewerwidget import VIEWER_TOOL_POLYGON, VIEWER_TOOL_NONE
 from tuiview.viewerwidget import VIEWER_TOOL_QUERY, VIEWER_TOOL_POLYLINE
-from PyQt4.QtCore import SIGNAL, QObject
-from PyQt4.QtGui import QAction, QFileDialog, QApplication
+from PyQt5.QtCore import QObject
+from PyQt5.QtWidgets import QAction, QFileDialog, QApplication
 from osgeo import ogr
 from osgeo import osr
 
@@ -52,27 +52,22 @@ class CollectShapefile(QObject):
         self.isCollecting = False
         self.viewer = viewer
         
-        self.newPolyAction = QAction(viewer)
+        self.newPolyAction = QAction(viewer, triggered=self.newPolyFile)
         self.newPolyAction.setText("Create new Polygon Shapefile")
-        self.connect(self.newPolyAction, SIGNAL("triggered()"), self.newPolyFile)
 
-        self.newLineAction = QAction(viewer)
+        self.newLineAction = QAction(viewer, triggered=self.newLineFile)
         self.newLineAction.setText("Create new Line Shapefile")
-        self.connect(self.newLineAction, SIGNAL("triggered()"), self.newLineFile)
 
-        self.newPointAction = QAction(viewer)
+        self.newPointAction = QAction(viewer, triggered=self.newPointFile)
         self.newPointAction.setText("Create new Point Shapefile")
-        self.connect(self.newPointAction, SIGNAL("triggered()"), self.newPointFile)
         
-        self.closeAction = QAction(viewer)
+        self.closeAction = QAction(viewer, triggered=self.closeFile)
         self.closeAction.setText("Close Shapefile")
         self.closeAction.setEnabled(False)
-        self.connect(self.closeAction, SIGNAL("triggered()"), self.closeFile)
         
-        self.newFeatureAction = QAction(viewer)
+        self.newFeatureAction = QAction(viewer, triggered=self.newFeature)
         self.newFeatureAction.setText("Collect Feature")
         self.newFeatureAction.setEnabled(False)
-        self.connect(self.newFeatureAction, SIGNAL("triggered()"), self.newFeature)
 
         collectMenu = viewer.menuBar().addMenu("&Collect")
         collectMenu.addAction(self.newPolyAction)
@@ -82,14 +77,11 @@ class CollectShapefile(QObject):
         collectMenu.addAction(self.newFeatureAction)
         
         # connect to the signal given when user selected new feature
-        self.connect(viewer.viewwidget, SIGNAL("polygonCollected(PyQt_PyObject)"), 
-                self.newFeatureCollected)
+        viewer.viewwidget.polygonCollected.connect(self.newFeatureCollected)
 
-        self.connect(viewer.viewwidget, SIGNAL("polylineCollected(PyQt_PyObject)"), 
-                self.newFeatureCollected)
+        viewer.viewwidget.polylineCollected.connect(self.newFeatureCollected)
                 
-        self.connect(viewer.viewwidget, SIGNAL("locationSelected(PyQt_PyObject)"),
-                self.newFeatureCollected)
+        viewer.viewwidget.locationSelected.connect(self.newFeatureCollected)
 
     def newPolyFile(self):
         "A polygon file"
@@ -110,7 +102,7 @@ class CollectShapefile(QObject):
         """
         Create shapefile of the desired type
         """
-        fname = QFileDialog.getSaveFileName(None, "Select Shape File name",
+        fname, filter = QFileDialog.getSaveFileName(None, "Select Shape File name",
                 "", "Shape Files (*.shp)")
         if fname is not None and fname != '':
             driver = ogr.GetDriverByName(DRIVERNAME)

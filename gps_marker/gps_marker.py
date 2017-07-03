@@ -26,8 +26,8 @@ https://bitbucket.org/chchrsc/tuiview/wiki/Plugins
 import gps
 from tuiview import pluginmanager
 from tuiview.viewerlayers import CURSOR_CROSSHAIR
-from PyQt4.QtCore import SIGNAL, QObject, QTimer, Qt
-from PyQt4.QtGui import QAction, QApplication, QMessageBox
+from PyQt5.QtCore import QObject, QTimer, Qt
+from PyQt5.QtWidgets import QAction, QApplication, QMessageBox
 from osgeo import osr
 import math
 
@@ -48,13 +48,11 @@ class GPSMarker(QObject):
         self.timer = None
         self.coordTrans = None
 
-        self.startAct = QAction(self)
+        self.startAct = QAction(self, triggered=self.startLogging)
         self.startAct.setText("Start Logging")
-        self.connect(self.startAct, SIGNAL("triggered()"), self.startLogging)
 
-        self.endAct = QAction(self)
+        self.endAct = QAction(self, triggered=self.endLogging)
         self.endAct.setText("End Logging")
-        self.connect(self.endAct, SIGNAL("triggered()"), self.endLogging)
 
         # see what other viewers are doing
         state = self.getOtherGPSMarkerState()

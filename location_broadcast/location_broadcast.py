@@ -25,8 +25,8 @@ import os
 import sys
 import time
 from tuiview import pluginmanager
-from PyQt4.QtCore import SIGNAL, QObject
-from PyQt4.QtGui import QApplication
+from PyQt5.QtCore import QObject
+from PyQt5.QtWidgets import QApplication
 
 TMPDIR = os.getenv('TMP', '/tmp')
 if sys.platform == 'win32':
@@ -67,8 +67,7 @@ def action(actioncode, viewer):
     if actioncode == pluginmanager.PLUGIN_ACTION_NEWVIEWER:
         handler = NewLocationHandler(viewer)
 
-        viewer.connect(viewer.viewwidget, SIGNAL("geolinkMove(PyQt_PyObject)"),
-            handler.onNewLocation)
+        viewer.viewwidget.geolinkMove.connect(handler.onNewLocation)
 
         # make sure the object isn't garbage collected
         app = QApplication.instance()

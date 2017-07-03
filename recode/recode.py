@@ -26,9 +26,9 @@ from tuiview import viewerlayers
 from tuiview import vectorrasterizer
 from tuiview.viewerwidget import VIEWER_TOOL_POLYGON, VIEWER_TOOL_NONE
 
-from PyQt4.QtCore import SIGNAL, QObject, QAbstractTableModel, Qt
-from PyQt4.QtGui import QAction, QApplication, QMessageBox, QHBoxLayout
-from PyQt4.QtGui import QVBoxLayout, QPushButton, QTableView, QDialog
+from PyQt5.QtCore import QObject, QAbstractTableModel, Qt
+from PyQt5.QtWidgets import QAction, QApplication, QMessageBox, QHBoxLayout
+from PyQt5.QtWidgets import QVBoxLayout, QPushButton, QTableView, QDialog
 
 def name():
     return 'Recode'
@@ -51,22 +51,18 @@ class Recode(QObject):
         self.recodeList = []
         self.recodeLayer = None
 
-        self.startAct = QAction(self)
+        self.startAct = QAction(self, triggered=self.startRecode)
         self.startAct.setText("Start Recoding Top Layer")
-        self.connect(self.startAct, SIGNAL("triggered()"), self.startRecode)
 
-        self.recodeAct = QAction(self)
+        self.recodeAct = QAction(self, triggered=self.recodePolygon)
         self.recodeAct.setText("Recode Polygon")
         self.recodeAct.setEnabled(False)
-        self.connect(self.recodeAct, SIGNAL("triggered()"), self.recodePolygon)
 
         recodeMenu = viewer.menuBar().addMenu("&Recode")
         recodeMenu.addAction(self.startAct)
         recodeMenu.addAction(self.recodeAct)
 
-        self.connect(viewer.viewwidget, 
-            SIGNAL("polygonCollected(PyQt_PyObject)"), self.newPolySelect)
-
+        viewer.viewwidget.polygonCollected.connect(self.newPolySelect)
 
     def startRecode(self):
         widget = self.viewer.viewwidget
@@ -155,13 +151,11 @@ class RecodeDialog(QDialog):
         self.tableView = QTableView(self)
         self.tableView.setModel(self.tableModel)
 
-        self.okButton = QPushButton()
+        self.okButton = QPushButton(clicked=self.accept)
         self.okButton.setText("OK")
-        self.connect(self.okButton, SIGNAL("clicked()"), self.accept)
 
-        self.cancelButton = QPushButton()
+        self.cancelButton = QPushButton(clicked=self.reject)
         self.cancelButton.setText("Cancel")
-        self.connect(self.cancelButton, SIGNAL("clicked()"), self.reject)
 
         self.buttonLayout = QHBoxLayout()
         self.buttonLayout.addWidget(self.okButton)
@@ -220,8 +214,7 @@ class RecodeTableModel(QAbstractTableModel):
             row = index.row()
             self.recodedValues[row] = int(value)
 
-            self.emit(SIGNAL("dataChanged(const QModelIndex &,const QModelIndex &)"),
-                            index, index)
+            self.dataChanged.emit(index, index)
             return True
 
         return False
