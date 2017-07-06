@@ -22,11 +22,13 @@ https://bitbucket.org/chchrsc/tuiview/wiki/Plugins
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 import numpy
+from osgeo import ogr
 from tuiview import pluginmanager
 from tuiview import viewerlayers
 from tuiview import vectorrasterizer
 from tuiview import viewerLUT
 from tuiview.viewerwidget import VIEWER_TOOL_POLYGON, VIEWER_TOOL_NONE
+from tuiview.viewerwidget import VIEWER_TOOL_QUERY
 
 from PyQt5.QtGui import QImage, QPainter
 from PyQt5.QtCore import QObject, QAbstractTableModel, Qt, QPoint
@@ -68,12 +70,18 @@ class Recode(QObject):
         self.showOutlinesAct.setCheckable(True)
         self.showOutlinesAct.setEnabled(False)
 
+        self.editCodesAct = QAction(self, triggered=self.editCodes)
+        self.editCodesAct.setText("Edit recodes of a Polygon")
+        self.editCodesAct.setEnabled(False)
+
         recodeMenu = viewer.menuBar().addMenu("&Recode")
         recodeMenu.addAction(self.startAct)
         recodeMenu.addAction(self.recodeAct)
         recodeMenu.addAction(self.showOutlinesAct)
+        recodeMenu.addAction(self.editCodesAct)
 
         viewer.viewwidget.polygonCollected.connect(self.newPolySelect)
+        viewer.viewwidget.locationSelected.connect(self.newLocationSelected)
 
     def startRecode(self):
         widget = self.viewer.viewwidget
@@ -101,6 +109,7 @@ class Recode(QObject):
             self.startAct.setEnabled(False)
             self.recodeAct.setEnabled(True)
             self.showOutlinesAct.setEnabled(True)
+            self.editCodesAct.setEnabled(True)
 
     def recodePolygon(self):
         self.viewer.viewwidget.setActiveTool(VIEWER_TOOL_POLYGON, id(self))
@@ -128,6 +137,52 @@ class Recode(QObject):
         self.recodeLayer.drawOutlines = checked
         self.recodeLayer.getImage()
         self.viewer.viewwidget.viewport().update()
+
+    def editCodes(self):
+        self.viewer.viewwidget.setActiveTool(VIEWER_TOOL_QUERY, id(self))
+
+    def newLocationSelected(self, queryInfo):
+        # do the edit
+        self.viewer.viewwidget.setActiveTool(VIEWER_TOOL_NONE, id(self))
+
+        # find it
+        ptGeom = ogr.Geometry(ogr.wkbPoint)
+        ptGeom.AddPoint(queryInfo.easting, queryInfo.northing)
+        foundIdx = None
+        for idx, (geom, recodes) in enumerate(self.recodeList):
+            if geom.Contains(ptGeom):
+                foundIdx = idx
+                break
+
+        if foundIdx is None:
+            QMessageBox.critical(self.viewer, name(), 
+                        "No polygon found at point")
+            return
+
+        geom, oldrecodes = self.recodeList[foundIdx]
+        # turn oldrecodes back into a dictionary
+        dictrecodes = {}
+        for key, new in oldrecodes:
+            dictrecodes[key] = new
+
+        dlg = RecodeDialog(self.viewer, dictrecodes)
+        if dlg.exec_() == RecodeDialog.Accepted:
+            recodes = []
+            recodedValues = dlg.tableModel.recodedValues
+            for key in recodedValues.keys():
+                new = recodedValues[key]
+                if key != new:
+                    recodes.append((key, new))
+            
+            if len(recodes) == 0:
+                del self.recodeList[foundIdx]
+            else:
+                self.recodeList[foundIdx] = (geom, recodes)
+            
+
+            self.recodeLayer.getImage()
+            self.viewer.viewwidget.viewport().update()
+
 
 class RecodeRasterLayer(viewerlayers.ViewerRasterLayer):
     def __init__(self, layermanager, recode):
@@ -179,12 +234,12 @@ class RecodeRasterLayer(viewerlayers.ViewerRasterLayer):
 
 
 class RecodeDialog(QDialog):
-    def __init__(self, parent):
+    def __init__(self, parent, recodedValues={}):
         QDialog.__init__(self, parent)
 
         self.setWindowTitle("Recode")
 
-        self.tableModel = RecodeTableModel(self)
+        self.tableModel = RecodeTableModel(self, recodedValues)
         self.tableView = QTableView(self)
         self.tableView.setModel(self.tableModel)
 
@@ -205,9 +260,9 @@ class RecodeDialog(QDialog):
         self.setLayout(self.mainLayout)
 
 class RecodeTableModel(QAbstractTableModel):
-    def __init__(self, parent):
+    def __init__(self, parent, recodedValues):
         QAbstractTableModel.__init__(self, parent)
-        self.recodedValues = {}
+        self.recodedValues = recodedValues
 
     def rowCount(self, parent):
         # TODO: get data type
