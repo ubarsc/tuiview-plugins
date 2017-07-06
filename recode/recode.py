@@ -21,6 +21,8 @@ https://bitbucket.org/chchrsc/tuiview/wiki/Plugins
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+import os
+import json
 import numpy
 from osgeo import ogr
 from tuiview import pluginmanager
@@ -36,6 +38,7 @@ from PyQt5.QtWidgets import QAction, QApplication, QMessageBox, QHBoxLayout
 from PyQt5.QtWidgets import QVBoxLayout, QPushButton, QTableView, QDialog
 
 DEFAULT_OUTLINE_COLOR = (255, 255, 0, 255)
+RECODE_EXT = ".recode"
 
 def name():
     return 'Recode'
@@ -74,11 +77,16 @@ class Recode(QObject):
         self.editCodesAct.setText("Edit recodes of a Polygon")
         self.editCodesAct.setEnabled(False)
 
+        self.saveRecodesAct = QAction(self, triggered=self.saveRecodes)
+        self.saveRecodesAct.setText("Save recodes to file")
+        self.saveRecodesAct.setEnabled(False)
+
         recodeMenu = viewer.menuBar().addMenu("&Recode")
         recodeMenu.addAction(self.startAct)
         recodeMenu.addAction(self.recodeAct)
         recodeMenu.addAction(self.showOutlinesAct)
         recodeMenu.addAction(self.editCodesAct)
+        recodeMenu.addAction(self.saveRecodesAct)
 
         viewer.viewwidget.polygonCollected.connect(self.newPolySelect)
         viewer.viewwidget.locationSelected.connect(self.newLocationSelected)
@@ -99,6 +107,19 @@ class Recode(QObject):
             # remove it
             layerMgr.removeLayer(oldLayer)
 
+            # is there a .recode file?
+            recodeName = oldLayer.filename + RECODE_EXT
+            if os.path.exists(recodeName):
+                msg = ("There is already a recode file for this layer. " +
+                        "Do you want to load it?")
+                if QMessageBox.question(self.viewer, name(), msg, 
+                        QMessageBox.Yes|QMessageBox.No) == QMessageBox.Yes:
+                    s = open(recodeName).readline()
+                    data = json.loads(s)
+                    for wkt, recodes in data:
+                        geom = ogr.CreateGeometryFromWkt(wkt)
+                        self.recodeList.append((geom, recodes))
+
             newLayer = RecodeRasterLayer(layerMgr, self)
             newLayer.open(oldLayer.gdalDataset, size.width(), size.height(), 
                     oldLayer.stretch, oldLayer.lut)
@@ -106,10 +127,14 @@ class Recode(QObject):
             layerMgr.addLayer(newLayer)
             self.recodeLayer = newLayer
 
+            self.recodeLayer.getImage()
+            self.viewer.viewwidget.viewport().update()
+
             self.startAct.setEnabled(False)
             self.recodeAct.setEnabled(True)
             self.showOutlinesAct.setEnabled(True)
             self.editCodesAct.setEnabled(True)
+            self.saveRecodesAct.setEnabled(True)
 
     def recodePolygon(self):
         self.viewer.viewwidget.setActiveTool(VIEWER_TOOL_POLYGON, id(self))
@@ -183,6 +208,24 @@ class Recode(QObject):
             self.recodeLayer.getImage()
             self.viewer.viewwidget.viewport().update()
 
+    def saveRecodes(self):
+        """
+        Save the recodes to a json file
+        """
+        # turn ogr.Geometry's into WKT so it can be saved
+        data = []
+        for geom, recodes in self.recodeList:
+            wkt = geom.ExportToWkt()
+            data.append((wkt, recodes))
+
+        s = json.dumps(data)
+
+        # find filename to save to
+        fname = self.recodeLayer.filename + RECODE_EXT
+        fileobj = open(fname, 'w')
+        fileobj.write(s + '\n')
+        fileobj.close()
+        self.viewer.showStatusMessage("Recodes saved to %s" % fname)
 
 class RecodeRasterLayer(viewerlayers.ViewerRasterLayer):
     def __init__(self, layermanager, recode):
