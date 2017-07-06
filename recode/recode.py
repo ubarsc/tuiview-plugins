@@ -21,14 +21,19 @@ https://bitbucket.org/chchrsc/tuiview/wiki/Plugins
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+import numpy
 from tuiview import pluginmanager
 from tuiview import viewerlayers
 from tuiview import vectorrasterizer
+from tuiview import viewerLUT
 from tuiview.viewerwidget import VIEWER_TOOL_POLYGON, VIEWER_TOOL_NONE
 
-from PyQt5.QtCore import QObject, QAbstractTableModel, Qt
+from PyQt5.QtGui import QImage, QPainter
+from PyQt5.QtCore import QObject, QAbstractTableModel, Qt, QPoint
 from PyQt5.QtWidgets import QAction, QApplication, QMessageBox, QHBoxLayout
 from PyQt5.QtWidgets import QVBoxLayout, QPushButton, QTableView, QDialog
+
+DEFAULT_OUTLINE_COLOR = (255, 255, 0, 255)
 
 def name():
     return 'Recode'
@@ -58,9 +63,15 @@ class Recode(QObject):
         self.recodeAct.setText("Recode Polygon")
         self.recodeAct.setEnabled(False)
 
+        self.showOutlinesAct = QAction(self, toggled=self.toggleOutlines)
+        self.showOutlinesAct.setText("Show Outlines of Polygons")
+        self.showOutlinesAct.setCheckable(True)
+        self.showOutlinesAct.setEnabled(False)
+
         recodeMenu = viewer.menuBar().addMenu("&Recode")
         recodeMenu.addAction(self.startAct)
         recodeMenu.addAction(self.recodeAct)
+        recodeMenu.addAction(self.showOutlinesAct)
 
         viewer.viewwidget.polygonCollected.connect(self.newPolySelect)
 
@@ -89,6 +100,7 @@ class Recode(QObject):
 
             self.startAct.setEnabled(False)
             self.recodeAct.setEnabled(True)
+            self.showOutlinesAct.setEnabled(True)
 
     def recodePolygon(self):
         self.viewer.viewwidget.setActiveTool(VIEWER_TOOL_POLYGON, id(self))
@@ -112,17 +124,29 @@ class Recode(QObject):
                 self.recodeLayer.getImage()
                 self.viewer.viewwidget.viewport().update()
 
+    def toggleOutlines(self, checked):
+        self.recodeLayer.drawOutlines = checked
+        self.recodeLayer.getImage()
+        self.viewer.viewwidget.viewport().update()
+
 class RecodeRasterLayer(viewerlayers.ViewerRasterLayer):
     def __init__(self, layermanager, recode):
         viewerlayers.ViewerRasterLayer.__init__(self, layermanager)
         self.recode = recode
+        self.drawOutlines = False
+
+        # LUT for drawing outlines if required
+        self.outlinelut = numpy.zeros((2, 4), numpy.uint8)
+        color = DEFAULT_OUTLINE_COLOR
+        for value, code in zip(color, viewerLUT.RGBA_CODES):
+            lutindex = viewerLUT.CODE_TO_LUTINDEX[code]
+            self.outlinelut[1,lutindex] = value
 
     def getImage(self):
         viewerlayers.ViewerRasterLayer.getImage(self)
         if self.image.isNull():
             return
         data = self.image.viewerdata
-        savedata = data.copy()
 
         extent = self.coordmgr.getWorldExtent()
         (xsize, ysize) = (self.coordmgr.dspWidth, self.coordmgr.dspHeight)
@@ -137,9 +161,22 @@ class RecodeRasterLayer(viewerlayers.ViewerRasterLayer):
                 subMask = mask & (data == old)
                 data[subMask] = new
 
-        diffm = data != savedata
-
         self.image = self.lut.applyLUTSingle(data, self.image.viewermask)
+
+        if self.drawOutlines:
+            # paint the outlines onto the image using QPainter
+
+            paint = QPainter(self.image)
+
+            for geom, recodes in self.recode.recodeList:
+                mask = vectorrasterizer.rasterizeGeometry(geom, extent, 
+                    xsize, ysize, 1, False)
+                bgra = self.outlinelut[mask]
+                outlineimage = QImage(bgra.data, xsize, ysize, QImage.Format_ARGB32)
+
+                paint.drawImage(QPoint(0, 0), outlineimage)
+            paint.end()
+
 
 class RecodeDialog(QDialog):
     def __init__(self, parent):
