@@ -1,6 +1,8 @@
 """
 Raster Recode plugin
 
+This is a bit of a work in progress, and is more of a demo than anything else.
+
 Copy into one of the locations mentioned here:
 https://bitbucket.org/chchrsc/tuiview/wiki/Plugins
 """
@@ -21,6 +23,7 @@ https://bitbucket.org/chchrsc/tuiview/wiki/Plugins
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+from __future__ import print_function, division
 import os
 import json
 import numpy
@@ -36,17 +39,23 @@ from PyQt5.QtGui import QImage, QPainter
 from PyQt5.QtCore import QObject, QAbstractTableModel, Qt, QPoint
 from PyQt5.QtWidgets import QAction, QApplication, QMessageBox, QHBoxLayout
 from PyQt5.QtWidgets import QVBoxLayout, QPushButton, QTableView, QDialog
+from PyQt5.QtWidgets import QLineEdit
 
 DEFAULT_OUTLINE_COLOR = (255, 255, 0, 255)
+"Colour that the outlines are shown in, if displayed"
 RECODE_EXT = ".recode"
+"Extension after the image file extension that the recodes are saved to"
 
 def name():
+    "Needed by TuiView"
     return 'Recode'
 
 def author():
+    "Needed by TuiView"
     return 'Sam Gillingham'
 
 def action(actioncode, viewer):
+    "Needed by TuiView"
     if actioncode == pluginmanager.PLUGIN_ACTION_NEWVIEWER:
         handler = Recode(viewer)
         
@@ -55,12 +64,20 @@ def action(actioncode, viewer):
         app.savePluginHandler(handler)
         
 class Recode(QObject):
+    """
+    Object that is the plugin. Create actions and menu.
+    """
     def __init__(self, viewer):
         QObject.__init__(self)
         self.viewer = viewer
+        # a list of tuples
+        # (geom, comment, dictionary_of_recodes)
+        # dictionary_of_recodes keyed on old code
         self.recodeList = []
         self.recodeLayer = None
+        self.dataRange = None
 
+        # Create actions
         self.startAct = QAction(self, triggered=self.startRecode)
         self.startAct.setText("Start Recoding Top Layer")
 
@@ -81,6 +98,7 @@ class Recode(QObject):
         self.saveRecodesAct.setText("Save recodes to file")
         self.saveRecodesAct.setEnabled(False)
 
+        # Create menu
         recodeMenu = viewer.menuBar().addMenu("&Recode")
         recodeMenu.addAction(self.startAct)
         recodeMenu.addAction(self.recodeAct)
@@ -88,10 +106,16 @@ class Recode(QObject):
         recodeMenu.addAction(self.editCodesAct)
         recodeMenu.addAction(self.saveRecodesAct)
 
+        # connect to signals that get fired when polygons, points
+        # etc get fired.
         viewer.viewwidget.polygonCollected.connect(self.newPolySelect)
         viewer.viewwidget.locationSelected.connect(self.newLocationSelected)
 
     def startRecode(self):
+        """
+        Called when the 'Start Recode' menu item is clicked.
+        Makes the top later become a recode layer.
+        """
         widget = self.viewer.viewwidget
         layerMgr = widget.layers
         size = widget.viewport().size()
@@ -104,6 +128,14 @@ class Recode(QObject):
                         "Top layer must be single band")
                 return
 
+            # check not floating point
+            firstBand = oldLayer.gdalDataset.GetRasterBand(1)
+            numpyType = viewerlayers.GDALTypeToNumpyType(firstBand.DataType)
+            if numpy.issubdtype(numpyType, float):
+                QMessageBox.critical(self.viewer, name(),
+                        "Layer must be integer")
+                return
+
             # remove it
             layerMgr.removeLayer(oldLayer)
 
@@ -114,12 +146,20 @@ class Recode(QObject):
                         "Do you want to load it?")
                 if QMessageBox.question(self.viewer, name(), msg, 
                         QMessageBox.Yes|QMessageBox.No) == QMessageBox.Yes:
+                    # Load it
                     s = open(recodeName).readline()
                     data = json.loads(s)
-                    for wkt, recodes in data:
+                    for wkt, comment, recodes in data:
                         geom = ogr.CreateGeometryFromWkt(wkt)
-                        self.recodeList.append((geom, recodes))
+                        # 'old' key in the dictionary comes back as a string
+                        # due to the JSON spec. Create a new dictionary
+                        recodesAsInts = {}
+                        for key in recodes:
+                            recodesAsInts[int(key)] = recodes[key]
+                        self.recodeList.append((geom, comment, recodesAsInts))
 
+            # Create a new layer with the same dataset, but of instance
+            # 'RecodeRasterLayer' which knows how to perform recodes on the fly.
             newLayer = RecodeRasterLayer(layerMgr, self)
             newLayer.open(oldLayer.gdalDataset, size.width(), size.height(), 
                     oldLayer.stretch, oldLayer.lut)
@@ -127,9 +167,15 @@ class Recode(QObject):
             layerMgr.addLayer(newLayer)
             self.recodeLayer = newLayer
 
+            # determine the range of data
+            dataInfo = numpy.iinfo(numpyType)
+            self.dataRange = (dataInfo.min, dataInfo.max)
+
+            # refresh display
             self.recodeLayer.getImage()
             self.viewer.viewwidget.viewport().update()
 
+            # Update menu items so they are enabled
             self.startAct.setEnabled(False)
             self.recodeAct.setEnabled(True)
             self.showOutlinesAct.setEnabled(True)
@@ -137,45 +183,66 @@ class Recode(QObject):
             self.saveRecodesAct.setEnabled(True)
 
     def recodePolygon(self):
+        """
+        Called when the 'Recode Polygon' menu option is selected.
+        Tells TuiView to select a polygon.
+        """
         self.viewer.viewwidget.setActiveTool(VIEWER_TOOL_POLYGON, id(self))
 
     def newPolySelect(self, toolInfo):
+        """
+        Called in responce to a new polygon being selected.
+        """
+        # turn off the tool
         self.viewer.viewwidget.setActiveTool(VIEWER_TOOL_NONE, id(self))
 
+        # get the polygon as an ogr.Geometry
         geom = toolInfo.getOGRGeometry()
 
-        dlg = RecodeDialog(self.viewer)
+        # display the dialog with the recodes
+        dlg = RecodeDialog(self.viewer, self.dataRange)
         if dlg.exec_() == RecodeDialog.Accepted:
-            recodes = []
-            recodedValues = dlg.tableModel.recodedValues
-            for key in recodedValues.keys():
-                new = recodedValues[key]
-                recodes.append((key, new))
+            recodedValues = dlg.getRecodedValues()
+            comment = dlg.getComment()
             
-            if len(recodes) > 0:
-                self.recodeList.append((geom, recodes))
+            if len(recodedValues) > 0:
+                self.recodeList.append((geom, comment, recodedValues))
 
                 self.recodeLayer.getImage()
                 self.viewer.viewwidget.viewport().update()
 
     def toggleOutlines(self, checked):
+        """
+        Toggle the outlines. Sets the drawOutlines var
+        and refreshed display.
+        """
         self.recodeLayer.drawOutlines = checked
         self.recodeLayer.getImage()
         self.viewer.viewwidget.viewport().update()
 
     def editCodes(self):
+        """
+        Called in response the the 'Edit Codes' menu option.
+        Tell TuiView to select a point.
+        """
         self.viewer.viewwidget.setActiveTool(VIEWER_TOOL_QUERY, id(self))
 
     def newLocationSelected(self, queryInfo):
-        # do the edit
+        """
+        A new point was selected - presumeably in response to the 
+        request in the editCodes() function. 
+        """
+        # turn off the tool.
         self.viewer.viewwidget.setActiveTool(VIEWER_TOOL_NONE, id(self))
 
-        # find it
+        # find it the polygon that constains this point
+        # first create a point
         ptGeom = ogr.Geometry(ogr.wkbPoint)
         ptGeom.AddPoint(queryInfo.easting, queryInfo.northing)
         foundIdx = None
-        for idx, (geom, recodes) in enumerate(self.recodeList):
+        for idx, (geom, comment, recodes) in enumerate(self.recodeList):
             if geom.Contains(ptGeom):
+                # found one. Should we always stop here?
                 foundIdx = idx
                 break
 
@@ -184,50 +251,48 @@ class Recode(QObject):
                         "No polygon found at point")
             return
 
-        geom, oldrecodes = self.recodeList[foundIdx]
-        # turn oldrecodes back into a dictionary
-        dictrecodes = {}
-        for key, new in oldrecodes:
-            dictrecodes[key] = new
+        geom, comment, oldrecodes = self.recodeList[foundIdx]
 
-        dlg = RecodeDialog(self.viewer, dictrecodes)
+        # show the dialog
+        dlg = RecodeDialog(self.viewer, self.dataRange, comment, oldrecodes)
         if dlg.exec_() == RecodeDialog.Accepted:
-            recodes = []
-            recodedValues = dlg.tableModel.recodedValues
-            for key in recodedValues.keys():
-                new = recodedValues[key]
-                if key != new:
-                    recodes.append((key, new))
+            recodedValues = dlg.getRecodedValues()
+            comment = dlg.getComment()
             
-            if len(recodes) == 0:
+            if len(recodedValues) == 0:
                 del self.recodeList[foundIdx]
             else:
-                self.recodeList[foundIdx] = (geom, recodes)
+                self.recodeList[foundIdx] = (geom, comment, recodedValues)
             
-
             self.recodeLayer.getImage()
             self.viewer.viewwidget.viewport().update()
 
     def saveRecodes(self):
         """
-        Save the recodes to a json file
+        Save the recodes to a json file. Called in response to
+        menu option.
         """
-        # turn ogr.Geometry's into WKT so it can be saved
+        # turn ogr.Geometry's into WKT so they can be saved
         data = []
-        for geom, recodes in self.recodeList:
+        for geom, comment, recodes in self.recodeList:
             wkt = geom.ExportToWkt()
-            data.append((wkt, recodes))
+            data.append((wkt, comment, recodes))
 
         s = json.dumps(data)
 
         # find filename to save to
         fname = self.recodeLayer.filename + RECODE_EXT
         fileobj = open(fname, 'w')
+        # write the info
         fileobj.write(s + '\n')
         fileobj.close()
         self.viewer.showStatusMessage("Recodes saved to %s" % fname)
 
 class RecodeRasterLayer(viewerlayers.ViewerRasterLayer):
+    """
+    Our Layer class derived from a normal raster layer. 
+    Gets the image data like normal, then applies the recodes
+    """
     def __init__(self, layermanager, recode):
         viewerlayers.ViewerRasterLayer.__init__(self, layermanager)
         self.recode = recode
@@ -241,55 +306,84 @@ class RecodeRasterLayer(viewerlayers.ViewerRasterLayer):
             self.outlinelut[1,lutindex] = value
 
     def getImage(self):
+        """
+        Derived function. Calls the base class to get the image
+        then recodes it.
+        """
+        # call base class implementation.
         viewerlayers.ViewerRasterLayer.getImage(self)
         if self.image.isNull():
             return
         data = self.image.viewerdata
 
+        # get info about where we are.
         extent = self.coordmgr.getWorldExtent()
         (xsize, ysize) = (self.coordmgr.dspWidth, self.coordmgr.dspHeight)
 
-        for geom, recodes in self.recode.recodeList:
+        # apply the recodes
+        for geom, comment, recodes in self.recode.recodeList:
+            # create a mask
             mask = vectorrasterizer.rasterizeGeometry(geom, extent, 
                     xsize, ysize, 1, True)
             # convert to 0s and 1s to bool
             mask = (mask == 1)
 
-            for old, new in recodes:
+            # apply the codes
+            # always sort on the old value??
+            for old in sorted(recodes.keys()):
+                new = recodes[old]
                 subMask = mask & (data == old)
                 data[subMask] = new
 
+        # create the image by re-running the lut
         self.image = self.lut.applyLUTSingle(data, self.image.viewermask)
 
         if self.drawOutlines:
             # paint the outlines onto the image using QPainter
-
             paint = QPainter(self.image)
 
-            for geom, recodes in self.recode.recodeList:
+            drawpt = QPoint(0, 0) # top left
+
+            # go through the polygons again - can't do this in one
+            # pass as the colour we want for the outlines might not
+            # be in the LUT.
+            for geom, comment, recodes in self.recode.recodeList:
+                # this time just get the outlines
                 mask = vectorrasterizer.rasterizeGeometry(geom, extent, 
                     xsize, ysize, 1, False)
+                # create an image from our mask using our oulinelut
                 bgra = self.outlinelut[mask]
                 outlineimage = QImage(bgra.data, xsize, ysize, QImage.Format_ARGB32)
-
-                paint.drawImage(QPoint(0, 0), outlineimage)
+                # draw this image onto the original
+                paint.drawImage(drawpt, outlineimage)
             paint.end()
 
-
 class RecodeDialog(QDialog):
-    def __init__(self, parent, recodedValues={}):
+    """
+    Dialog that allows enter to specify what sort of recoding is to
+    happen.
+    """
+    def __init__(self, parent, dataRange, comment=None, recodedValues=None):
         QDialog.__init__(self, parent)
 
         self.setWindowTitle("Recode")
 
-        self.tableModel = RecodeTableModel(self, recodedValues)
+        self.tableModel = RecodeTableModel(self, dataRange, recodedValues)
         self.tableView = QTableView(self)
         self.tableView.setModel(self.tableModel)
 
-        self.okButton = QPushButton(clicked=self.accept)
+        self.commentEdit = QLineEdit(self)
+        if comment is not None:
+            self.commentEdit.setText(comment)
+
+        self.recodeLayout = QVBoxLayout()
+        self.recodeLayout.addWidget(self.tableView)
+        self.recodeLayout.addWidget(self.commentEdit)
+
+        self.okButton = QPushButton(self, clicked=self.accept)
         self.okButton.setText("OK")
 
-        self.cancelButton = QPushButton(clicked=self.reject)
+        self.cancelButton = QPushButton(self, clicked=self.reject)
         self.cancelButton.setText("Cancel")
 
         self.buttonLayout = QHBoxLayout()
@@ -297,24 +391,48 @@ class RecodeDialog(QDialog):
         self.buttonLayout.addWidget(self.cancelButton)
 
         self.mainLayout = QVBoxLayout()
-        self.mainLayout.addWidget(self.tableView)
+        self.mainLayout.addLayout(self.recodeLayout)
         self.mainLayout.addLayout(self.buttonLayout)
 
         self.setLayout(self.mainLayout)
+        self.resize(200, 500)
+
+    def getRecodedValues(self):
+        """
+        returns dictionary of recoded values as user 
+        has edited them
+        """
+        return self.tableModel.recodedValues
+
+    def getComment(self):
+        """
+        Returns comment as entered by the user
+        """
+        return self.commentEdit.text()
 
 class RecodeTableModel(QAbstractTableModel):
-    def __init__(self, parent, recodedValues):
+    """
+    Table model. Basically provides information to be displayed
+    in the table of recodes.
+    """
+    def __init__(self, parent, dataRange, recodedValues=None):
         QAbstractTableModel.__init__(self, parent)
+        self.dataRange = dataRange
+        if recodedValues is None:
+            recodedValues = {}
         self.recodedValues = recodedValues
 
     def rowCount(self, parent):
-        # TODO: get data type
-        return 255
+        return self.dataRange[1] - self.dataRange[0]
 
     def columnCount(self, parent):
+        "Just old and new columns"
         return 2
 
     def headerData(self, section, orientation, role):
+        """
+        Get the header labels
+        """
         if orientation == Qt.Horizontal and role == Qt.DisplayRole:
             if section == 0:
                 return "Old"
@@ -323,6 +441,9 @@ class RecodeTableModel(QAbstractTableModel):
         return None
 
     def flags(self, index):
+        """
+        Flags - the second column is editable
+        """
         column = index.column()
         if column == 1:
             return Qt.ItemIsEditable | Qt.ItemIsEnabled
@@ -330,25 +451,41 @@ class RecodeTableModel(QAbstractTableModel):
             return Qt.ItemIsEnabled
 
     def data(self, index, role):
+        """
+        Get the data for a cell.
+        """
         if role == Qt.DisplayRole:
             column = index.column()
-            row = index.row()
+            row = index.row() - self.dataRange[0]
 
             if column == 1 and row in self.recodedValues:
+                # return 'new' code from our dictionary
                 return self.recodedValues[row]
-
-            return str(row)
+            else:
+                # just return the row value which happens to be the 'old'
+                return str(row)
         return None
 
     def setData(self, index, value, role):
+        """
+        Update data from user entry. 
+        """
         if role == Qt.EditRole:
             column = index.column()
             if column == 0:
+                # we don't edit the 'old'
                 return False
 
-            row = index.row()
-            self.recodedValues[row] = int(value)
+            try:
+                value = int(value)
+            except TypeError:
+                # something that can't be turned into an int. Ignore
+                return False
 
+            row = index.row() - self.dataRange[0]
+            self.recodedValues[row] = value
+
+            # update display
             self.dataChanged.emit(index, index)
             return True
 
