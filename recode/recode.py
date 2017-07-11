@@ -483,7 +483,15 @@ class RecodeTableModel(QAbstractTableModel):
                 return False
 
             row = index.row() - self.dataRange[0]
-            self.recodedValues[row] = value
+            if value == row:
+                # remove it
+                try:
+                    del self.recodedValues[row]
+                except IndexError:
+                    pass
+            else:
+                # add it
+                self.recodedValues[row] = value
 
             # update display
             self.dataChanged.emit(index, index)

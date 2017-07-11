@@ -133,19 +133,11 @@ def doRecodes(input, output, recodes=None, noRAT=False):
 
     controls = applier.ApplierControls()
     controls.progress = cuiprogress.GDALProgressBar()
+    # always thematic??
+    controls.setThematic(True)
 
     applier.apply(riosRecode, inputs, outputs, otherArgs, controls=controls)
 
-    # copy the LAYER_TYPE
-    # copying all metadata is dangerous as some maps to RATs etc
-    # couldn't work out how to do this in applier (setting output...)
-    inds = gdal.Open(input)
-    inband = inds.GetRasterBand(1)
-    ltype = inband.GetMetadataItem('LAYER_TYPE')
-    outds = gdal.Open(output, gdal.GA_Update)
-    outband = outds.GetRasterBand(1)
-    outband.SetMetadataItem('LAYER_TYPE', ltype)
-    
     # now the rat
     if not noRAT:
         inRats = ratapplier.RatAssociations()
