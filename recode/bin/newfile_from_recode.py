@@ -84,17 +84,6 @@ def riosRecode(info, inputs, outputs, otherArgs):
     # make 2d
     outputs.output = numpy.expand_dims(data, 0)
 
-def riosCopyRAT(info, inputs, outputs, otherArgs):
-    """
-    Called from RIOS. Copies the RAT
-    """
-    for columnName in otherArgs.colNames:
-        data = getattr(inputs.inclass, columnName)
-        setattr(outputs.outclass, columnName, data)
-
-        usage = inputs.inclass.getUsage(columnName)
-        outputs.outclass.setUsage(columnName, usage)
-
 def doRecodes(input, output, recodes=None, noRAT=False):
     """
     Calls RIOS to do the recoding.
@@ -139,19 +128,10 @@ def doRecodes(input, output, recodes=None, noRAT=False):
     applier.apply(riosRecode, inputs, outputs, otherArgs, controls=controls)
 
     # now the rat
-    if not noRAT:
-        inRats = ratapplier.RatAssociations()
-        outRats = ratapplier.RatAssociations()
-        
-        inRats.inclass = ratapplier.RatHandle(input)
-        outRats.outclass = ratapplier.RatHandle(output)
-
-        otherArgs = ratapplier.OtherArguments()
-        otherArgs.colNames = rat.getColumnNames(input)
-        if len(otherArgs.colNames) > 0:
-            print('copying the RAT')
-            ratapplier.apply(riosCopyRAT, inRats, outRats, otherArgs)
-
+    if not noRAT and len(otherArgs.colNames) > 0:
+        print('copying the RAT')
+        progress = cuiprogress.GDALProgressBar()
+        ratapplier.copyRAT(input, output, progress)
 
 if __name__ == '__main__':
     cmdargs = getCmdargs()
