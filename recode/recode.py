@@ -54,6 +54,10 @@ def author():
     "Needed by TuiView"
     return 'Sam Gillingham'
 
+def description():
+    "Needed by TuiView"
+    return 'Tool for recoding areas of a image interactively'
+
 def action(actioncode, viewer):
     "Needed by TuiView"
     if actioncode == pluginmanager.PLUGIN_ACTION_NEWVIEWER:

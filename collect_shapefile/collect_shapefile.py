@@ -43,6 +43,9 @@ def name():
 def author():
     return 'Sam Gillingham'
 
+def description():
+    return 'Tool for creating shapefiles by clicking on points on the viewer'
+
 class CollectShapefile(QObject):
     def __init__(self, viewer):
         QObject.__init__(self)

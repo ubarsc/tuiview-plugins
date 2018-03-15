@@ -40,6 +40,9 @@ def name():
 def author():
     return 'Sam Gillingham'
 
+def description():
+    return 'Shows GPS location on the viewer. Requires gpsd.'
+
 class GPSMarker(QObject):
     def __init__(self, viewer):
         QObject.__init__(self)

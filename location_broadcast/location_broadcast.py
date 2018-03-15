@@ -63,6 +63,9 @@ def name():
 def author():
     return 'Sam Gillingham'
 
+def description():
+    return 'Broadcasts location of TuiView so can be read by other applications'
+
 def action(actioncode, viewer):
     if actioncode == pluginmanager.PLUGIN_ACTION_NEWVIEWER:
         handler = NewLocationHandler(viewer)

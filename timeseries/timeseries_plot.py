@@ -45,6 +45,10 @@ def author():
     "Needed by TuiView"
     return 'Sam Gillingham'
 
+def description():
+    "Needed by TuiView"
+    return 'Creates timeseries plots for points and polygons from images loaded in the viewer'
+
 def action(actioncode, viewer):
     "Needed by TuiView"
     if actioncode == pluginmanager.PLUGIN_ACTION_NEWVIEWER:
