@@ -33,11 +33,11 @@ from tuiview.viewerwidget import VIEWER_TOOL_POLYGON, VIEWER_TOOL_NONE
 from tuiview.viewerwidget import VIEWER_TOOL_QUERY
 
 from PyQt5.QtCore import QObject, Qt, pyqtSignal
-from PyQt5.QtWidgets import QAction, QApplication, QMessageBox, QHBoxLayout
+from PyQt5.QtWidgets import QAction, QApplication, QMessageBox
 from PyQt5.QtWidgets import QVBoxLayout, QDockWidget, QWidget
 from PyQt5.QtGui import QPen
 
-PLOT_PADDING = 0.2  # of the range of data
+PLOT_PADDING = 0.2  # of the range of data. Pads this amount above and below min/max
 
 def name():
     "Needed by TuiView"
@@ -68,7 +68,7 @@ class TimeseriesDockWidget(QDockWidget):
     profileClosed = pyqtSignal(QDockWidget, name='profileClosed')
 
     def __init__(self, parent):
-        QDockWidget.__init__(self, "Profile", parent)
+        QDockWidget.__init__(self, "Timeseries", parent)
 
         # create a new widget that lives in the dock window
         self.dockWidget = QWidget()
@@ -90,6 +90,8 @@ class TimeseriesDockWidget(QDockWidget):
         
         # tell the dock window this is the widget to display
         self.setWidget(self.dockWidget)
+
+        self.resize(400, 200)
 
     def plotData(self, data, steps):
         """
@@ -140,10 +142,10 @@ class TimeseriesPlot(QObject):
 
         # Create actions
         self.pointAct = QAction(self, triggered=self.pointTimeseries)
-        self.pointAct.setText("Do timeseries analysis on a point")
+        self.pointAct.setText("Do timeseries analysis on a &point")
 
         self.polyAct = QAction(self, triggered=self.polyTimeseries)
-        self.polyAct.setText("Do timeseries analysis on a polygon")
+        self.polyAct.setText("Do timeseries analysis on a p&olygon")
         self.polyAct.setEnabled(False)
 
         # Create menu
@@ -188,11 +190,22 @@ class TimeseriesPlot(QObject):
                 if mask == viewerLUT.MASK_IMAGE_VALUE:
                     if isinstance(imgData, numpy.ndarray):
                         # single band image
+
+                        # are we inside this image?
+                        if (col < 0 or row < 0 or row >= imgData.shape[0] or 
+                                col >= imgData.shape[1]):
+                            continue
+
                         val = imgData[row, col]
                     else:
                         # 3 band image
                         val = []
                         for band in imgData:
+                            # are we inside this image?
+                            if (col < 0 or row < 0 or row >= band.shape[0] or 
+                                    col >= band.shape[1]):
+                                continue
+
                             val.append(band[row, col])
 
                     # check there isn't a mix of single band and multi band
