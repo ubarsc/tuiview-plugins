@@ -33,11 +33,18 @@ from tuiview.viewerwidget import VIEWER_TOOL_POLYGON, VIEWER_TOOL_NONE
 from tuiview.viewerwidget import VIEWER_TOOL_QUERY
 
 from PyQt5.QtCore import QObject, Qt, pyqtSignal
-from PyQt5.QtWidgets import QAction, QApplication, QMessageBox
+from PyQt5.QtWidgets import QAction, QApplication, QMessageBox, QActionGroup
 from PyQt5.QtWidgets import QVBoxLayout, QDockWidget, QWidget
 from PyQt5.QtGui import QPen
 
 PLOT_PADDING = 0.2  # of the range of data. Pads this amount above and below min/max
+
+# methods for summarizing a polygon
+SUMMARY_MIN = 0
+SUMMARY_MAX = 1
+SUMMARY_MEAN = 2
+SUMMARY_MEDIAN = 3
+SUMMARY_STDDEV = 4
 
 def name():
     "Needed by TuiView"
@@ -139,6 +146,10 @@ class TimeseriesPlot(QObject):
         QObject.__init__(self)
         self.viewer = viewer
         self.plotWindow = None
+        self.pointActive = False
+        self.polyActive = False
+        self.geom = None # last polygon
+        self.summaryMethod = SUMMARY_MEAN # set setChecked on self.meanAct below
 
         # Create actions
         self.pointAct = QAction(self, triggered=self.pointTimeseries)
@@ -146,12 +157,47 @@ class TimeseriesPlot(QObject):
 
         self.polyAct = QAction(self, triggered=self.polyTimeseries)
         self.polyAct.setText("Do timeseries analysis on a p&olygon")
-        self.polyAct.setEnabled(False)
+
+        self.minAct = QAction(self, triggered=self.summaryMin)
+        self.minAct.setText("Minimum")
+        self.minAct.setCheckable(True)
+
+        self.maxAct = QAction(self, triggered=self.summaryMax)
+        self.maxAct.setText("Maximum")
+        self.maxAct.setCheckable(True)
+
+        self.meanAct = QAction(self, triggered=self.summaryMean)
+        self.meanAct.setText("Mean")
+        self.meanAct.setCheckable(True)
+        self.meanAct.setChecked(True)
+
+        self.medianAct = QAction(self, triggered=self.summaryMedian)
+        self.medianAct.setText("Median")
+        self.medianAct.setCheckable(True)
+
+        self.stddevAct = QAction(self, triggered=self.summaryStdDev)
+        self.stddevAct.setText("Standard Deviation")
+        self.stddevAct.setCheckable(True)
+
+        self.polySummary = QActionGroup(self)
+        self.polySummary.setExclusive(True)
+        self.polySummary.addAction(self.minAct)
+        self.polySummary.addAction(self.maxAct)
+        self.polySummary.addAction(self.meanAct)
+        self.polySummary.addAction(self.medianAct)
+        self.polySummary.addAction(self.stddevAct)
 
         # Create menu
         tseriesMenu = viewer.menuBar().addMenu("T&imeseries")
         tseriesMenu.addAction(self.pointAct)
         tseriesMenu.addAction(self.polyAct)
+
+        polySummaryMenu = tseriesMenu.addMenu("Polygon Summary Method")
+        polySummaryMenu.addAction(self.minAct)
+        polySummaryMenu.addAction(self.maxAct)
+        polySummaryMenu.addAction(self.meanAct)
+        polySummaryMenu.addAction(self.medianAct)
+        polySummaryMenu.addAction(self.stddevAct)
 
         # connect to signals that get fired when polygons, points
         # etc get fired.
@@ -163,13 +209,19 @@ class TimeseriesPlot(QObject):
         Tell TuiView to select a point.
         """
         self.viewer.viewwidget.setActiveTool(VIEWER_TOOL_QUERY, id(self))
+        self.pointActive = True
 
     def newLocationSelected(self, queryInfo):
         """
         A point has been selected
         """
+        if not self.pointActive:
+            # we didn't request this
+            return
+
         # turn off the tool
         self.viewer.viewwidget.setActiveTool(VIEWER_TOOL_NONE, id(self))
+        self.pointActive = False
 
         # queryInfo.data contains the data for the top layer, but we 
         # need to go through each layer
@@ -221,33 +273,128 @@ class TimeseriesPlot(QObject):
 
         print(data, steps)
         if self.plotWindow is None:
-            self.plotWindow = TimeseriesDockWidget(self.viewer)
-            self.viewer.addDockWidget(Qt.TopDockWidgetArea, self.plotWindow)
-            self.plotWindow.setFloating(True) # detach so it isn't docked by default
-            # this works to prevent it trying to dock when dragging
-            # but double click still works
-            self.plotWindow.setAllowedAreas(Qt.NoDockWidgetArea) 
-
-            # grab the signal the profileDock sends when it is closed
-            self.plotWindow.profileClosed.connect(self.profileClosed)
-
+            self.openPlotWindow()
 
         data = numpy.array(data)
         steps = numpy.array(steps)
         self.plotWindow.plotData(data, steps)
+
+    def openPlotWindow(self):
+        self.plotWindow = TimeseriesDockWidget(self.viewer)
+        self.viewer.addDockWidget(Qt.TopDockWidgetArea, self.plotWindow)
+        self.plotWindow.setFloating(True) # detach so it isn't docked by default
+        # this works to prevent it trying to dock when dragging
+        # but double click still works
+        self.plotWindow.setAllowedAreas(Qt.NoDockWidgetArea) 
+
+        # grab the signal the profileDock sends when it is closed
+        self.plotWindow.profileClosed.connect(self.profileClosed)
 
     def polyTimeseries(self):
         """
         Tell TuiView to select a polygon.
         """
         self.viewer.viewwidget.setActiveTool(VIEWER_TOOL_POLYGON, id(self))
+        self.polyActive = True
         
     def newPolySelected(self, toolInfo):
         """
         Called in responce to a new polygon being selected.
         """
+        if not self.polyActive:
+            # not requested by us
+            return
+
         # turn off the tool
         self.viewer.viewwidget.setActiveTool(VIEWER_TOOL_NONE, id(self))
+        self.polyActive = False
+
+        # get the polygon as an ogr.Geometry
+        self.geom = toolInfo.getOGRGeometry()
+
+        self.doPolygonSummary()
+
+    def doPolygonSummary(self):
+        """
+        Does summary of self.geom on all layers and plots results
+        Split into separate function so it can be easily called again
+        with new summary method
+        """
+        if self.geom is None:
+            return
+
+        data = []
+        steps = []
+        layerMgr = self.viewer.viewwidget.layers
+        count = 0
+        for layer in layerMgr.layers:
+            if isinstance(layer, viewerlayers.ViewerRasterLayer):
+                # it is a raster layer, get out data inside geom
+                imgData = layer.image.viewerdata
+                imgMask = layer.image.viewermask
+
+                # get info about where we are.
+                extent = layer.coordmgr.getWorldExtent()
+                (xsize, ysize) = (layer.coordmgr.dspWidth, layer.coordmgr.dspHeight)
+
+                # create a mask
+                mask = vectorrasterizer.rasterizeGeometry(self.geom, extent, 
+                        xsize, ysize, 1, True)
+                # convert to 0s and 1s to bool and add in valid data mask
+                mask = (mask == 1) & (imgMask == viewerLUT.MASK_IMAGE_VALUE)
+
+                if not mask.any():
+                    # nothing here
+                    continue
+        
+                # get the data
+                if isinstance(imgData, numpy.ndarray):
+                    # single band image
+
+                    polyData = imgData[mask]
+                    val = self.summarizeData(polyData)
+                else:
+                    # 3 band image
+                    val = []
+                    for band in imgData:
+                        polyData = band[mask]
+                        val.append(self.summarizeData(polyData))
+
+                # check there isn't a mix of single band and multi band
+                if len(data) > 0 and isinstance(val, list) != isinstance(data[0], list):
+                    QMessageBox.critical(self.viewer, name(), 
+                        "Images cannot be a mix of single and multi bands")
+                    return
+
+                data.append(val)
+                steps.append(count)
+
+            count += 1
+
+        print(data, steps)
+        if self.plotWindow is None:
+            self.openPlotWindow()
+
+        data = numpy.array(data)
+        steps = numpy.array(steps)
+        self.plotWindow.plotData(data, steps)
+
+    def summarizeData(self, data):
+        """
+        Summarizes the given array using self.summaryMethod
+        """
+        if self.summaryMethod == SUMMARY_MIN:
+            return data.min()
+        elif self.summaryMethod == SUMMARY_MAX:
+            return data.max()
+        elif self.summaryMethod == SUMMARY_MEAN:
+            return data.mean()
+        elif self.summaryMethod == SUMMARY_MEDIAN:
+            return numpy.median(data)
+        elif self.summaryMethod == SUMMARY_STDDEV:
+            return data.std()
+        else:
+            raise ValueError('Unknown summary method')
 
     def profileClosed(self, profileDock):
         """
@@ -255,3 +402,23 @@ class TimeseriesPlot(QObject):
         so we open a new one next time.
         """
         self.plotWindow = None
+
+    def summaryMin(self):
+        self.summaryMethod = SUMMARY_MIN
+        self.doPolygonSummary()
+
+    def summaryMax(self):
+        self.summaryMethod = SUMMARY_MAX
+        self.doPolygonSummary()
+
+    def summaryMean(self):
+        self.summaryMethod = SUMMARY_MEAN
+        self.doPolygonSummary()
+
+    def summaryMedian(self):
+        self.summaryMethod = SUMMARY_MEDIAN
+        self.doPolygonSummary()
+
+    def summaryStdDev(self):
+        self.summaryMethod = SUMMARY_STDDEV
+        self.doPolygonSummary()
