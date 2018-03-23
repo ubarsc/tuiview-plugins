@@ -29,13 +29,14 @@ from tuiview import viewerlayers
 from tuiview import vectorrasterizer
 from tuiview import viewerLUT
 from tuiview import plotwidget
+from tuiview.plotscalingdialog import PlotScalingDialog
 from tuiview.viewerwidget import VIEWER_TOOL_POLYGON, VIEWER_TOOL_NONE
 from tuiview.viewerwidget import VIEWER_TOOL_QUERY
 
 from PyQt5.QtCore import QObject, Qt, pyqtSignal
 from PyQt5.QtWidgets import QAction, QApplication, QMessageBox, QActionGroup
-from PyQt5.QtWidgets import QVBoxLayout, QDockWidget, QWidget
-from PyQt5.QtGui import QPen
+from PyQt5.QtWidgets import QVBoxLayout, QDockWidget, QWidget, QToolBar
+from PyQt5.QtGui import QPen, QIcon
 
 PLOT_PADDING = 0.2  # of the range of data. Pads this amount above and below min/max
 
@@ -82,7 +83,6 @@ class TimeseriesDockWidget(QDockWidget):
         self.mainLayout = QVBoxLayout()
 
         self.plotWidget = plotwidget.PlotLineWidget(self)
-        self.mainLayout.addWidget(self.plotWidget)
 
         self.whitePen = QPen(Qt.white)
         self.whitePen.setWidth(1)
@@ -93,12 +93,39 @@ class TimeseriesDockWidget(QDockWidget):
         self.bluePen = QPen(Qt.blue)
         self.bluePen.setWidth(1)
 
+        self.plotScalingAction = QAction(self, triggered=self.onPlotScaling)
+        self.plotScalingAction.setText("Set Plot Scaling")
+        self.plotScalingAction.setStatusTip("Set Plot Scaling")
+        icon = QIcon(":/viewer/images/setplotscale.png")
+        self.plotScalingAction.setIcon(icon)
+
+        # toolbar
+        self.toolbar = QToolBar(self.dockWidget)
+        self.toolbar.addAction(self.plotScalingAction)
+
+        self.mainLayout.addWidget(self.toolbar)
+        self.mainLayout.addWidget(self.plotWidget)
         self.dockWidget.setLayout(self.mainLayout)
         
         # tell the dock window this is the widget to display
         self.setWidget(self.dockWidget)
 
         self.resize(400, 200)
+
+        # allow plot scaling to be changed by user
+        # Min, Max. None means 'auto'.
+        self.plotScaling = (None, None)
+
+
+    def onPlotScaling(self):
+        """
+        Allows the user to change the Y axis scaling of the plot
+        """
+        data = numpy.array([1.0]) # dodgy it up so it does floats
+        dlg = PlotScalingDialog(self, self.plotScaling, data)
+
+        if dlg.exec_() == PlotScalingDialog.Accepted:
+            self.plotScaling = dlg.getScale()
 
     def plotData(self, data, steps):
         """
