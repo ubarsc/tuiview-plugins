@@ -38,7 +38,7 @@ from PyQt5.QtWidgets import QAction, QApplication, QMessageBox, QActionGroup
 from PyQt5.QtWidgets import QVBoxLayout, QDockWidget, QWidget, QToolBar
 from PyQt5.QtGui import QPen, QIcon
 
-PLOT_PADDING = 0.2  # of the range of data. Pads this amount above and below min/max
+PLOT_PADDING = 0.05  # of the range of data. Pads this amount above and below min/max
 
 # methods for summarizing a polygon
 SUMMARY_MIN = 0
