@@ -78,6 +78,10 @@ class TimeseriesDockWidget(QDockWidget):
     def __init__(self, parent):
         QDockWidget.__init__(self, "Timeseries", parent)
 
+        # save this so the data type checks in the scaling dialog work
+        self.lastData = None 
+        self.lastSteps = None
+
         # create a new widget that lives in the dock window
         self.dockWidget = QWidget()
         self.mainLayout = QVBoxLayout()
@@ -99,9 +103,15 @@ class TimeseriesDockWidget(QDockWidget):
         icon = QIcon(":/viewer/images/setplotscale.png")
         self.plotScalingAction.setIcon(icon)
 
+        self.savePlotAction = QAction(self, triggered=self.savePlot)
+        self.savePlotAction.setText("&Save Plot")
+        self.savePlotAction.setStatusTip("Save Plot")
+        self.savePlotAction.setIcon(QIcon(":/viewer/images/saveplot.png"))
+
         # toolbar
         self.toolbar = QToolBar(self.dockWidget)
         self.toolbar.addAction(self.plotScalingAction)
+        self.toolbar.addAction(self.savePlotAction)
 
         self.mainLayout.addWidget(self.toolbar)
         self.mainLayout.addWidget(self.plotWidget)
@@ -110,22 +120,43 @@ class TimeseriesDockWidget(QDockWidget):
         # tell the dock window this is the widget to display
         self.setWidget(self.dockWidget)
 
-        self.resize(400, 200)
+        self.resize(400, 300)
 
         # allow plot scaling to be changed by user
         # Min, Max. None means 'auto'.
         self.plotScaling = (None, None)
 
+    def savePlot(self):
+        """
+        Save the plot as a file. Either .pdf or .ps QPrinter
+        chooses format based on extension.
+        """
+        from PyQt5.QtGui import QPainter
+        from PyQt5.QtPrintSupport import QPrinter
+        from PyQt5.QtWidgets import QFileDialog
+        fname, filter = QFileDialog.getSaveFileName(self, "Plot File", 
+                    filter="PDF (*.pdf);;Postscript (*.ps)")
+        if fname != '':
+            printer = QPrinter()
+            printer.setOrientation(QPrinter.Landscape)
+            printer.setColorMode(QPrinter.Color)
+            printer.setOutputFileName(fname)
+            printer.setResolution(96)
+            painter = QPainter()
+            painter.begin(printer)
+            self.plotWidget.render(painter)
+            painter.end()
 
     def onPlotScaling(self):
         """
         Allows the user to change the Y axis scaling of the plot
         """
-        data = numpy.array([1.0]) # dodgy it up so it does floats
-        dlg = PlotScalingDialog(self, self.plotScaling, data)
+        dlg = PlotScalingDialog(self, self.plotScaling, self.lastData)
 
         if dlg.exec_() == PlotScalingDialog.Accepted:
             self.plotScaling = dlg.getScale()
+            # re-plot the 'last' data
+            self.plotData(self.lastData, self.lastSteps)
 
     def plotData(self, data, steps):
         """
@@ -148,16 +179,29 @@ class TimeseriesDockWidget(QDockWidget):
             curve = plotwidget.PlotCurve(steps, data, self.whitePen)
             self.plotWidget.addCurve(curve)
 
-        # set the Y Range a bit larger than the data
-        minVal = data.min()
-        maxVal = data.max()
+        # get the users scaling
+        minVal, maxVal = self.plotScaling
+
+        # substitute auto vals
+        if minVal is None:
+            minVal = data.min()
+        if maxVal is None:
+            maxVal = data.max()
+
+        # set the X&Y Range a bit larger than the data
+        # we always do it regardless of whether this is user range, or auto
         rangeVal = maxVal - minVal
         paddingAmount = rangeVal * PLOT_PADDING
 
         minVal -= paddingAmount
         maxVal += paddingAmount
 
+        # update plot
         self.plotWidget.setYRange(minVal, maxVal)
+
+        # save the data
+        self.lastData = data
+        self.lastSteps = steps
         
     def closeEvent(self, event):
         """
@@ -175,7 +219,7 @@ class TimeseriesPlot(QObject):
         self.plotWindow = None
         self.pointActive = False
         self.polyActive = False
-        self.geom = None # last polygon
+        self.lastGeom = None # last polygon
         self.summaryMethod = SUMMARY_MEAN # set setChecked on self.meanAct below
 
         # Create actions
@@ -337,17 +381,17 @@ class TimeseriesPlot(QObject):
         self.polyActive = False
 
         # get the polygon as an ogr.Geometry
-        self.geom = toolInfo.getOGRGeometry()
+        self.lastGeom = toolInfo.getOGRGeometry()
 
         self.doPolygonSummary()
 
     def doPolygonSummary(self):
         """
-        Does summary of self.geom on all layers and plots results
+        Does summary of self.lastGeom on all layers and plots results
         Split into separate function so it can be easily called again
         with new summary method
         """
-        if self.geom is None:
+        if self.lastGeom is None:
             return
 
         data = []
@@ -365,7 +409,7 @@ class TimeseriesPlot(QObject):
                 (xsize, ysize) = (layer.coordmgr.dspWidth, layer.coordmgr.dspHeight)
 
                 # create a mask
-                mask = vectorrasterizer.rasterizeGeometry(self.geom, extent, 
+                mask = vectorrasterizer.rasterizeGeometry(self.lastGeom, extent, 
                         xsize, ysize, 1, True)
                 # convert to 0s and 1s to bool and add in valid data mask
                 mask = (mask == 1) & (imgMask == viewerLUT.MASK_IMAGE_VALUE)
