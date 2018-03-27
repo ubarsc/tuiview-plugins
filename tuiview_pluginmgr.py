@@ -23,15 +23,18 @@ import os
 import sys
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget
 from PyQt5.QtWidgets import QTableView, QHBoxLayout, QVBoxLayout, QPushButton
-from PyQt5.QtCore import Qt, QAbstractTableModel
+from PyQt5.QtCore import Qt, QAbstractTableModel, QSettings
 
 from tuiview import pluginmanager
 
 MESSAGE_TITLE = "TuiView Plugin Manager"
 
+# for settings
+SELECTED_PLUGINS = "SelectedPlugins"
+
 def getPluginInfo():
     """
-    Return a list of (name, author, description) tuples
+    Return a list of (name, author, description, path) tuples
     """
     plugins = []
     mgr = pluginmanager.PluginManager()
@@ -49,9 +52,23 @@ def getPluginInfo():
         authorTxt = author()
         desc = getattr(mgr.plugins[name], pluginmanager.PLUGIN_DESC_FN)
         descTxt = desc()
-        plugins.append((name, authorTxt, descTxt))
+
+        subdir = os.path.dirname(mgr.plugins[name].__file__)
+        path = os.path.join(currPath, subdir)
+        path = os.path.abspath(path)
+
+        plugins.append((name, authorTxt, descTxt, path))
 
     return plugins
+
+def getAsBashZshString(selectedPaths):
+    return 'export %s="%s"' % (pluginmanager.PLUGINS_ENV, ':'.join(selectedPaths))
+
+def getAsCshString(selectedPaths):
+    return 'setenv %s "%s"' % (pluginmanager.PLUGINS_ENV, ':'.join(selectedPaths))
+
+def getAsDOSString(selectedPaths):
+    return 'set %s="%s"' % (pluginmanager.PLUGINS_ENV, ';'.join(selectedPaths))
 
 class PluginGuiApplicaton(QApplication):
     def __init__(self, pluginInfo):
@@ -61,32 +78,48 @@ class PluginGuiApplicaton(QApplication):
         self.setApplicationName('tuiview-plugins')
         self.setOrganizationName('TuiView')
 
-        self.window = PluginGuiWindow(pluginInfo)
+        settings = QSettings()
+        selected = settings.value(SELECTED_PLUGINS, "")
+        selected = selected.split(",")
+
+        valid = [info[0] for info in pluginInfo]
+
+        # strip out any that don't exist
+        validSelected = []
+        for sel in selected:
+            if sel in valid:
+                validSelected.append(sel)
+
+        self.window = PluginGuiWindow(pluginInfo, validSelected)
 
 class PluginGuiWindow(QMainWindow):
-    def __init__(self, pluginInfo):
+    def __init__(self, pluginInfo, selected):
         QMainWindow.__init__(self)
         self.setWindowTitle(MESSAGE_TITLE)
 
-        self.widget = PluginGuiWidget(self, pluginInfo)
+        self.widget = PluginGuiWidget(self, pluginInfo, selected)
         self.setCentralWidget(self.widget)
 
         self.resize(500, 500)
         self.show()
     
 class PluginGuiWidget(QWidget):
-    def __init__(self, parent, pluginInfo):
+    def __init__(self, parent, pluginInfo, selected):
         QWidget.__init__(self, parent)
+        self.parent = parent
 
-        self.tableModel = PluginTableModel(self, pluginInfo)
+        self.tableModel = PluginTableModel(self, pluginInfo, selected)
 
         self.tableView = QTableView(self)
         self.tableView.setSelectionBehavior(QTableView.SelectRows)
         self.tableView.setModel(self.tableModel)
+        header = self.tableView.horizontalHeader()
+        header.setStretchLastSection(True)
+        header.setHighlightSections(False)
 
         self.saveButton = QPushButton(self)
         self.saveButton.setText("Save and Exit")
-        self.saveButton.clicked.connect(parent.close)
+        self.saveButton.clicked.connect(self.saveAndExit)
 
         self.cancelButton = QPushButton(self)
         self.cancelButton.setText("Cancel")
@@ -103,10 +136,49 @@ class PluginGuiWidget(QWidget):
 
         self.setLayout(self.mainLayout)
 
+    def saveAndExit(self):
+        settings = QSettings()
+        selected = ','.join(self.tableModel.selected)
+        settings.setValue(SELECTED_PLUGINS, selected)
+        self.parent.close()
+
+        # get paths
+        paths = []
+        for sel in self.tableModel.selected:
+            for inf in self.tableModel.pluginInfo:
+                if inf[0] == sel:
+                    paths.append(inf[-1])
+
+        # print to terminal
+        print()
+        print('To load the plugins in TuiView run the following command before running it:')
+        print()
+        print('For Bash and Zsh:')
+        print(getAsBashZshString(paths))
+        print()
+        print('For tcsh and csh:')
+        print(getAsCshString(paths))
+        print()
+        print('For Windows/DOS:')
+        print(getAsDOSString(paths))
+        print()
+
+
 class PluginTableModel(QAbstractTableModel):
-    def __init__(self, parent, pluginInfo):
+    def __init__(self, parent, pluginInfo, selected):
         QAbstractTableModel.__init__(self, parent)
         self.pluginInfo = pluginInfo
+        self.selected = selected
+
+    def flags(self, index):
+        "Have to override to make it checkable"
+        f = QAbstractTableModel.flags(self, index)
+        column = index.column()
+
+        if column == 0:
+            return f | Qt.ItemIsUserCheckable
+        else:
+            return f
 
     def rowCount(self, parent):
         return len(self.pluginInfo)
@@ -134,13 +206,31 @@ class PluginTableModel(QAbstractTableModel):
         row = index.row()
         column = index.column()
         if role == Qt.CheckStateRole and column == 0:
-            return Qt.Checked
+            name = self.pluginInfo[row][0]
+            if name in self.selected:
+                return Qt.Checked
+            else:
+                return Qt.Unchecked
 
         elif role == Qt.DisplayRole:
             if column > 0:
                 return self.pluginInfo[row][column-1]
 
         return None
+
+    def setData(self, index, value, role):
+        column = index.column()
+        if role == Qt.CheckStateRole and column == 0:
+            row = index.row()
+            name = self.pluginInfo[row][0]
+            if value == Qt.Checked:
+                if name not in self.selected:
+                    self.selected.append(name)
+            else:
+                self.selected.remove(name)
+
+            return True
+        return False
 
 if __name__ == '__main__':
 
