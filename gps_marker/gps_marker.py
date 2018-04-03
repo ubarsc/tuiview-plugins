@@ -23,7 +23,12 @@ https://bitbucket.org/chchrsc/tuiview/wiki/Plugins
 
 # Needs gpsd + Python bindings installed
 # Python3 version of bindings here: https://github.com/tpoche/gps-python3
-import gps
+from __future__ import print_function
+
+try:
+    import gps
+except ImportError:
+    print('gps module not found - plugin will not work as expected')
 from tuiview import pluginmanager
 from tuiview.viewerlayers import CURSOR_CROSSHAIR
 from PyQt5.QtCore import QObject, QTimer, Qt
