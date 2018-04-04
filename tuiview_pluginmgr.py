@@ -23,7 +23,8 @@ import os
 import sys
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget
 from PyQt5.QtWidgets import QTableView, QHBoxLayout, QVBoxLayout, QPushButton
-from PyQt5.QtCore import Qt, QAbstractTableModel, QSettings
+from PyQt5.QtWidgets import QTextEdit
+from PyQt5.QtCore import Qt, QAbstractTableModel, QSettings, pyqtSignal
 
 from tuiview import pluginmanager
 
@@ -31,6 +32,12 @@ MESSAGE_TITLE = "TuiView Plugin Manager"
 
 # for settings
 SELECTED_PLUGINS = "SelectedPlugins"
+
+# So we work with older TuiView that doesn't have this
+if hasattr(pluginmanager, 'PLUGIN_DESC_FN'):
+    PLUGIN_DESC_FN = getattr(pluginmanager, 'PLUGIN_DESC_FN')
+else:
+    PLUGIN_DESC_FN = 'description'
 
 def getPluginInfo():
     """
@@ -50,7 +57,7 @@ def getPluginInfo():
     for name in mgr.plugins:
         author = getattr(mgr.plugins[name], pluginmanager.PLUGIN_AUTHOR_FN)
         authorTxt = author()
-        desc = getattr(mgr.plugins[name], pluginmanager.PLUGIN_DESC_FN)
+        desc = getattr(mgr.plugins[name], PLUGIN_DESC_FN)
         descTxt = desc()
 
         subdir = os.path.dirname(mgr.plugins[name].__file__)
@@ -62,13 +69,40 @@ def getPluginInfo():
     return plugins
 
 def getAsBashZshString(selectedPaths):
-    return 'export %s="%s"' % (pluginmanager.PLUGINS_ENV, ':'.join(selectedPaths))
+    if len(selectedPaths) == 0:
+        return 'unset %s' % pluginmanager.PLUGINS_ENV
+    else:
+        return 'export %s="%s"' % (pluginmanager.PLUGINS_ENV, ':'.join(selectedPaths))
 
 def getAsCshString(selectedPaths):
-    return 'setenv %s "%s"' % (pluginmanager.PLUGINS_ENV, ':'.join(selectedPaths))
+    if len(selectedPaths) == 0:
+        return 'unsetenv %s' % pluginmanager.PLUGINS_ENV
+    else:
+        return 'setenv %s "%s"' % (pluginmanager.PLUGINS_ENV, ':'.join(selectedPaths))
 
 def getAsDOSString(selectedPaths):
-    return 'set %s="%s"' % (pluginmanager.PLUGINS_ENV, ';'.join(selectedPaths))
+    if len(selectedPaths) == 0:
+        return 'set "%s="' % pluginmanager.PLUGINS_ENV
+    else:
+        return 'set "%s=%s"' % (pluginmanager.PLUGINS_ENV, ';'.join(selectedPaths))
+
+def getExplanation(selectedPaths):
+    expl = """
+
+To load the plugins in TuiView run the following command before running it:
+
+For Bash and Zsh:
+%s
+
+For tcsh and csh:
+%s
+
+For Windows/DOS:
+%s
+
+    """
+    return expl % (getAsBashZshString(selectedPaths),
+        getAsCshString(selectedPaths), getAsDOSString(selectedPaths))
 
 class PluginGuiApplicaton(QApplication):
     def __init__(self, pluginInfo):
@@ -109,6 +143,7 @@ class PluginGuiWidget(QWidget):
         self.parent = parent
 
         self.tableModel = PluginTableModel(self, pluginInfo, selected)
+        self.tableModel.selectedChangedSig.connect(self.selectedChanged)
 
         self.tableView = QTableView(self)
         self.tableView.setSelectionBehavior(QTableView.SelectRows)
@@ -116,6 +151,10 @@ class PluginGuiWidget(QWidget):
         header = self.tableView.horizontalHeader()
         header.setStretchLastSection(True)
         header.setHighlightSections(False)
+
+        self.explanation = QTextEdit(self)
+        self.explanation.setReadOnly(True)
+        self.selectedChanged() # get the text
 
         self.saveButton = QPushButton(self)
         self.saveButton.setText("Save and Exit")
@@ -127,6 +166,7 @@ class PluginGuiWidget(QWidget):
 
         self.mainLayout = QVBoxLayout()
         self.mainLayout.addWidget(self.tableView)
+        self.mainLayout.addWidget(self.explanation)
 
         self.buttonLayout = QHBoxLayout()
         self.buttonLayout.addWidget(self.saveButton)
@@ -136,39 +176,33 @@ class PluginGuiWidget(QWidget):
 
         self.setLayout(self.mainLayout)
 
+    def selectedChanged(self):
+        paths = self.tableModel.getPaths()
+        expl = getExplanation(paths)
+        self.explanation.setText(expl)
+
     def saveAndExit(self):
         settings = QSettings()
         selected = ','.join(self.tableModel.selected)
         settings.setValue(SELECTED_PLUGINS, selected)
         self.parent.close()
 
-        # get paths
-        paths = []
-        for sel in self.tableModel.selected:
-            for inf in self.tableModel.pluginInfo:
-                if inf[0] == sel:
-                    paths.append(inf[-1])
-
-        # print to terminal
-        print()
-        print('To load the plugins in TuiView run the following command before running it:')
-        print()
-        print('For Bash and Zsh:')
-        print(getAsBashZshString(paths))
-        print()
-        print('For tcsh and csh:')
-        print(getAsCshString(paths))
-        print()
-        print('For Windows/DOS:')
-        print(getAsDOSString(paths))
-        print()
-
-
 class PluginTableModel(QAbstractTableModel):
+    # signals
+    selectedChangedSig = pyqtSignal(name='selectedChanged')
+
     def __init__(self, parent, pluginInfo, selected):
         QAbstractTableModel.__init__(self, parent)
         self.pluginInfo = pluginInfo
         self.selected = selected
+
+    def getPaths(self):
+        paths = []
+        for sel in self.selected:
+            for inf in self.pluginInfo:
+                if inf[0] == sel:
+                    paths.append(inf[-1])
+        return paths
 
     def flags(self, index):
         "Have to override to make it checkable"
@@ -228,6 +262,8 @@ class PluginTableModel(QAbstractTableModel):
                     self.selected.append(name)
             else:
                 self.selected.remove(name)
+
+            self.selectedChangedSig.emit()
 
             return True
         return False
