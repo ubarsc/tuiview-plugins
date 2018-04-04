@@ -21,6 +21,7 @@ from __future__ import print_function, division
 
 import os
 import sys
+import argparse
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget
 from PyQt5.QtWidgets import QTableView, QHBoxLayout, QVBoxLayout, QPushButton
 from PyQt5.QtWidgets import QTextEdit
@@ -39,10 +40,16 @@ if hasattr(pluginmanager, 'PLUGIN_DESC_FN'):
 else:
     PLUGIN_DESC_FN = 'description'
 
-def getPluginInfo():
+def getPluginInfo(quiet=False):
     """
     Return a list of (name, author, description, path) tuples
     """
+    if quiet:
+        # ensure stdout redirected
+        f = open(os.devnull, 'w')
+        old_stdout = sys.stdout
+        sys.stdout = f
+
     plugins = []
     mgr = pluginmanager.PluginManager()
 
@@ -65,6 +72,10 @@ def getPluginInfo():
         path = os.path.abspath(path)
 
         plugins.append((name, authorTxt, descTxt, path))
+
+    if quiet:
+        # reset 
+        sys.stdout = old_stdout
 
     return plugins
 
@@ -100,12 +111,14 @@ For tcsh and csh:
 For Windows/DOS:
 %s
 
+Run '%s -h' for information on printing this command so it can be sourced/eval'd from your shell.
     """
     return expl % (getAsBashZshString(selectedPaths),
-        getAsCshString(selectedPaths), getAsDOSString(selectedPaths))
+        getAsCshString(selectedPaths), getAsDOSString(selectedPaths),
+        os.path.basename(sys.argv[0]))
 
 class PluginGuiApplicaton(QApplication):
-    def __init__(self, pluginInfo):
+    def __init__(self, pluginInfo, gui=True):
         QApplication.__init__(self, sys.argv)
 
         # for settings
@@ -114,17 +127,18 @@ class PluginGuiApplicaton(QApplication):
 
         settings = QSettings()
         selected = settings.value(SELECTED_PLUGINS, "")
-        selected = selected.split(",")
+        self.selected = selected.split(",")
 
         valid = [info[0] for info in pluginInfo]
 
         # strip out any that don't exist
         validSelected = []
-        for sel in selected:
+        for sel in self.selected:
             if sel in valid:
                 validSelected.append(sel)
 
-        self.window = PluginGuiWindow(pluginInfo, validSelected)
+        if gui:
+            self.window = PluginGuiWindow(pluginInfo, validSelected)
 
 class PluginGuiWindow(QMainWindow):
     def __init__(self, pluginInfo, selected):
@@ -268,9 +282,61 @@ class PluginTableModel(QAbstractTableModel):
             return True
         return False
 
+def getCmdargs():
+    """
+    Get commandline arguments
+    """
+    if sys.platform.startswith('win'):
+        defaultShell = 'DOS'
+    else:
+        defaultShell = os.getenv('SHELL', default='bash')
+
+    p = argparse.ArgumentParser()
+    p.add_argument('-s', '--source', default=False, action="store_true", 
+        help="Print the command for the given shell "+
+            "for the currently selected plugins and exit so this can be " +
+            "sourced/eval'd from your shell. ")
+    p.add_argument('--shell', default=defaultShell,
+        help="Specify the shell to use for --source, default shell taken from the " +
+            "$SHELL environment variable.")
+
+    return p.parse_args()
+
+def printSourceLine(shell, selected, info):
+    """
+    Print line to be sourced
+    """
+    # get the paths
+    selectedPaths = []
+    for sel in selected:
+        for inf in info:
+            if inf[0] == sel:
+                selectedPaths.append(inf[-1])
+
+    if shell.endswith('DOS'):
+        print(getAsDOSString(selectedPaths))
+
+    elif shell.endswith('bash') or shell.endswith('zsh'):
+        print(getAsBashZshString(selectedPaths))
+
+    elif shell.endswith('csh'):
+        print(getAsCshString(selectedPaths))
+
+    else:
+        raise ValueError('Unsupported shell %s' % shell)
+
 if __name__ == '__main__':
 
-    pluginInfo = getPluginInfo()
 
-    app = PluginGuiApplicaton(pluginInfo)
-    sys.exit(app.exec_())
+    cmdargs = getCmdargs()
+
+    pluginInfo = getPluginInfo(cmdargs.source)
+    app = PluginGuiApplicaton(pluginInfo, not cmdargs.source)
+
+    if cmdargs.source:
+        # print line and exit
+        printSourceLine(cmdargs.shell, app.selected, pluginInfo)
+        sys.exit(0)
+    else:
+        # display GUI
+        sys.exit(app.exec_())
