@@ -23,6 +23,7 @@ https://bitbucket.org/chchrsc/tuiview/wiki/Plugins
 
 from __future__ import print_function, division
 
+import datetime
 import numpy
 from tuiview import pluginmanager
 from tuiview import viewerlayers
@@ -46,6 +47,9 @@ SUMMARY_MAX = 1
 SUMMARY_MEAN = 2
 SUMMARY_MEDIAN = 3
 SUMMARY_STDDEV = 4
+
+# key for obtaining date metadata
+DATE_METADATA_KEY = 'LCR_Date'
 
 def name():
     "Needed by TuiView"
@@ -282,6 +286,29 @@ class TimeseriesPlot(QObject):
         self.viewer.viewwidget.setActiveTool(VIEWER_TOOL_QUERY, id(self))
         self.pointActive = True
 
+    @staticmethod
+    def addStepForDataset(ds, count, steps):
+        """
+        Adds the appropriate step to the steps list.
+        If DATE_METADATA_KEY exists in the dataset metadata
+        then this is converted to a julian day and added to steps.
+        Otherwise, count is added to steps.
+
+        Returns True if DATE_METADATA_KEY was used.
+        """
+        date = ds.GetMetadataItem(DATE_METADATA_KEY)
+        if date is None:
+            steps.append(count)
+            return False
+        else:
+            year = int(date[:4])
+            month = int(date[4:6])
+            day = int(date[6:])
+            dateObj = datetime.date(year, month, day)
+
+            steps.append(dateObj.toordinal())
+            return True
+
     def newLocationSelected(self, queryInfo):
         """
         A point has been selected
@@ -300,6 +327,7 @@ class TimeseriesPlot(QObject):
         steps = []
         layerMgr = self.viewer.viewwidget.layers
         count = 0
+        usingJulianDay = None
         for layer in layerMgr.layers:
             if isinstance(layer, viewerlayers.ViewerRasterLayer):
                 # it is a raster layer, get out data at queryInfo.easting, queryInfo.northing
@@ -338,16 +366,25 @@ class TimeseriesPlot(QObject):
                         return
 
                     data.append(val)
-                    steps.append(count)
+                    julDay = self.addStepForDataset(layer.gdalDataset, count, steps)
+                    if usingJulianDay is not None and julDay != usingJulianDay:
+                        QMessageBox.critical(self.viewer, name(),
+                            "Images must all have %s, or none of them should have it" % DATE_METADATA_KEY)
+                        return
+
+                    usingJulianDay = julDay
 
                 count += 1
 
-        print(data, steps)
         if self.plotWindow is None:
             self.openPlotWindow()
 
         data = numpy.array(data)
         steps = numpy.array(steps)
+        if usingJulianDay:
+            steps -= steps.min()
+
+        print(data, steps)
         self.plotWindow.plotData(data, steps)
 
     def openPlotWindow(self):
@@ -398,6 +435,7 @@ class TimeseriesPlot(QObject):
         steps = []
         layerMgr = self.viewer.viewwidget.layers
         count = 0
+        usingJulianDay = None
         for layer in layerMgr.layers:
             if isinstance(layer, viewerlayers.ViewerRasterLayer):
                 # it is a raster layer, get out data inside geom
@@ -438,16 +476,24 @@ class TimeseriesPlot(QObject):
                     return
 
                 data.append(val)
-                steps.append(count)
+                julDay = self.addStepForDataset(layer.gdalDataset, count, steps)
+                if usingJulianDay is not None and julDay != usingJulianDay:
+                    QMessageBox.critical(self.viewer, name(),
+                        "Images must all have %s, or none of them should have it" % DATE_METADATA_KEY)
+                    return
+                usingJulianDay = julDay
 
             count += 1
 
-        print(data, steps)
         if self.plotWindow is None:
             self.openPlotWindow()
 
         data = numpy.array(data)
         steps = numpy.array(steps)
+        if usingJulianDay:
+            steps -= steps.min()
+
+        print(data, steps)
         self.plotWindow.plotData(data, steps)
 
     def summarizeData(self, data):
