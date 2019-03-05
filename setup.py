@@ -26,7 +26,7 @@ NO_INSTALL_CMDLINE = int(os.getenv('TUIVIEW_NOCMDLINE', '0')) > 0
 if NO_INSTALL_CMDLINE:
     scripts_list = None
 else:
-    scripts_list = ['tuiview_pluginmgr.py']
+    scripts_list = ['tuiviewpluginmgr']
 
 setup(name='tuiview-plugins',
       version='1.0.0',
