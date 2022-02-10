@@ -39,5 +39,5 @@ setup(name='tuiview-plugins',
             'tuiview_plugins/recode', 'tuiview_plugins/timeseries'],
       license='LICENSE.txt', 
       url='https://bitbucket.org/chchrsc/tuiview-plugins'
-     )
+      )
 

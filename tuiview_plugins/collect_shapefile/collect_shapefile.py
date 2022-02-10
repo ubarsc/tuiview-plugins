@@ -23,7 +23,6 @@ https://bitbucket.org/chchrsc/tuiview/wiki/Plugins
 
 import os
 from tuiview import pluginmanager
-from tuiview import viewerlayers
 from tuiview.viewerwidget import VIEWER_TOOL_POLYGON, VIEWER_TOOL_NONE
 from tuiview.viewerwidget import VIEWER_TOOL_QUERY, VIEWER_TOOL_POLYLINE
 from PyQt5.QtCore import QObject
@@ -37,14 +36,18 @@ COLLECT_POLY = 1
 COLLECT_LINE = 2
 COLLECT_POINT = 3
 
+
 def name():
     return 'Collect Shapefile'
+
 
 def author():
     return 'Sam Gillingham'
 
+
 def description():
     return 'Tool for creating shapefiles by clicking on points on the viewer'
+
 
 class CollectShapefile(QObject):
     def __init__(self, viewer):
@@ -213,6 +216,7 @@ class CollectShapefile(QObject):
                 
             self.isCollecting = False
 
+
 def action(actioncode, viewer):
     if actioncode == pluginmanager.PLUGIN_ACTION_NEWVIEWER:
         handler = CollectShapefile(viewer)
@@ -220,6 +224,3 @@ def action(actioncode, viewer):
         # make sure the object isn't garbage collected
         app = QApplication.instance()
         app.savePluginHandler(handler)
-        
-        
-        

@@ -35,6 +35,7 @@ else:
     UID = str(os.getuid())
 SHAREDFILE = os.path.join(TMPDIR, 'locationbcast_%s' % UID)
 
+
 class NewLocationHandler(QObject):
     def __init__(self, viewer):
         QObject.__init__(self)
@@ -57,14 +58,18 @@ class NewLocationHandler(QObject):
                         extent[2], extent[3]))
             fileobj.close()
 
+
 def name():
     return 'Location Broadcast'
+
 
 def author():
     return 'Sam Gillingham'
 
+
 def description():
     return 'Broadcasts location of TuiView so can be read by other applications'
+
 
 def action(actioncode, viewer):
     if actioncode == pluginmanager.PLUGIN_ACTION_NEWVIEWER:
