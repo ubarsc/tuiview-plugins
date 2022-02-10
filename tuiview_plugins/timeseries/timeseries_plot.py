@@ -51,17 +51,21 @@ SUMMARY_STDDEV = 4
 # key for obtaining date metadata
 DATE_METADATA_KEY = 'LCR_Date'
 
+
 def name():
     "Needed by TuiView"
     return 'Timeseries Plot'
+
 
 def author():
     "Needed by TuiView"
     return 'Sam Gillingham'
 
+
 def description():
     "Needed by TuiView"
     return 'Creates timeseries plots for points and polygons from images loaded in the viewer'
+
 
 def action(actioncode, viewer):
     "Needed by TuiView"
@@ -71,6 +75,7 @@ def action(actioncode, viewer):
         # make sure the object isn't garbage collected
         app = QApplication.instance()
         app.savePluginHandler(handler)
+
 
 class TimeseriesDockWidget(QDockWidget):
     """
@@ -175,7 +180,6 @@ class TimeseriesDockWidget(QDockWidget):
             for band in range(3):
                 bandData = data[..., band]
 
-                #print(steps, bandData)
                 curve = plotwidget.PlotCurve(steps, bandData, penList[band])
                 self.plotWidget.addCurve(curve)
         else:
@@ -213,6 +217,7 @@ class TimeseriesDockWidget(QDockWidget):
         """
         self.profileClosed.emit(self)
 
+
 class TimeseriesPlot(QObject):
     """
     Object that is the plugin. Create actions and menu.
@@ -223,8 +228,8 @@ class TimeseriesPlot(QObject):
         self.plotWindow = None
         self.pointActive = False
         self.polyActive = False
-        self.lastGeom = None # last polygon
-        self.summaryMethod = SUMMARY_MEAN # set setChecked on self.meanAct below
+        self.lastGeom = None  # last polygon
+        self.summaryMethod = SUMMARY_MEAN  # set setChecked on self.meanAct below
 
         # Create actions
         self.pointAct = QAction(self, triggered=self.pointTimeseries)
@@ -390,7 +395,7 @@ class TimeseriesPlot(QObject):
     def openPlotWindow(self):
         self.plotWindow = TimeseriesDockWidget(self.viewer)
         self.viewer.addDockWidget(Qt.TopDockWidgetArea, self.plotWindow)
-        self.plotWindow.setFloating(True) # detach so it isn't docked by default
+        self.plotWindow.setFloating(True)  # detach so it isn't docked by default
         # this works to prevent it trying to dock when dragging
         # but double click still works
         self.plotWindow.setAllowedAreas(Qt.NoDockWidgetArea) 

@@ -33,7 +33,7 @@ from tuiview import pluginmanager
 # dir there will be no 'tuiview_plugins' subdir).
 import tuiview_plugins
 PLUGINS_LOC = os.path.dirname(tuiview_plugins.__file__)
-#print('PLUGINS_LOC', PLUGINS_LOC)
+# print('PLUGINS_LOC', PLUGINS_LOC)
 
 MESSAGE_TITLE = "TuiView Plugin Manager"
 
@@ -45,6 +45,7 @@ if hasattr(pluginmanager, 'PLUGIN_DESC_FN'):
     PLUGIN_DESC_FN = getattr(pluginmanager, 'PLUGIN_DESC_FN')
 else:
     PLUGIN_DESC_FN = 'description'
+
 
 def getPluginInfo(quiet=False):
     """
@@ -83,11 +84,13 @@ def getPluginInfo(quiet=False):
 
     return plugins
 
+
 def getAsBashZshString(selectedPaths):
     if len(selectedPaths) == 0:
         return 'unset %s' % pluginmanager.PLUGINS_ENV
     else:
         return 'export %s="%s"' % (pluginmanager.PLUGINS_ENV, ':'.join(selectedPaths))
+
 
 def getAsCshString(selectedPaths):
     if len(selectedPaths) == 0:
@@ -95,11 +98,13 @@ def getAsCshString(selectedPaths):
     else:
         return 'setenv %s "%s"' % (pluginmanager.PLUGINS_ENV, ':'.join(selectedPaths))
 
+
 def getAsDOSString(selectedPaths):
     if len(selectedPaths) == 0:
         return 'set "%s="' % pluginmanager.PLUGINS_ENV
     else:
         return 'set "%s=%s"' % (pluginmanager.PLUGINS_ENV, ';'.join(selectedPaths))
+
 
 def getExplanation(selectedPaths):
     expl = """
@@ -120,6 +125,7 @@ Run '%s -h' for information on printing this command so it can be sourced/eval'd
     return expl % (getAsBashZshString(selectedPaths),
         getAsCshString(selectedPaths), getAsDOSString(selectedPaths),
         os.path.basename(sys.argv[0]))
+
 
 class PluginGuiApplicaton(QApplication):
     def __init__(self, pluginInfo, gui=True):
@@ -144,6 +150,7 @@ class PluginGuiApplicaton(QApplication):
         if gui:
             self.window = PluginGuiWindow(pluginInfo, validSelected)
 
+
 class PluginGuiWindow(QMainWindow):
     def __init__(self, pluginInfo, selected):
         QMainWindow.__init__(self)
@@ -154,7 +161,8 @@ class PluginGuiWindow(QMainWindow):
 
         self.resize(500, 500)
         self.show()
-    
+
+
 class PluginGuiWidget(QWidget):
     def __init__(self, parent, pluginInfo, selected):
         QWidget.__init__(self, parent)
@@ -172,7 +180,7 @@ class PluginGuiWidget(QWidget):
 
         self.explanation = QTextEdit(self)
         self.explanation.setReadOnly(True)
-        self.selectedChanged() # get the text
+        self.selectedChanged()  # get the text
 
         self.saveButton = QPushButton(self)
         self.saveButton.setText("Save and Exit")
@@ -204,6 +212,7 @@ class PluginGuiWidget(QWidget):
         selected = ','.join(self.tableModel.selected)
         settings.setValue(SELECTED_PLUGINS, selected)
         self.parent.close()
+
 
 class PluginTableModel(QAbstractTableModel):
     # signals
@@ -266,7 +275,7 @@ class PluginTableModel(QAbstractTableModel):
 
         elif role == Qt.DisplayRole:
             if column > 0:
-                return self.pluginInfo[row][column-1]
+                return self.pluginInfo[row][column - 1]
 
         return None
 
@@ -285,6 +294,7 @@ class PluginTableModel(QAbstractTableModel):
 
             return True
         return False
+
 
 def getCmdargs():
     """
@@ -305,6 +315,7 @@ def getCmdargs():
             "$SHELL environment variable.")
 
     return p.parse_args()
+
 
 def printSourceLine(shell, selected, info):
     """
@@ -328,6 +339,7 @@ def printSourceLine(shell, selected, info):
 
     else:
         raise ValueError('Unsupported shell %s' % shell)
+
 
 def run():
     """

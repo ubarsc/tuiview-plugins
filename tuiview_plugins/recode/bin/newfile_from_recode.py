@@ -28,14 +28,14 @@ import json
 import numpy
 import argparse
 from rios import applier, cuiprogress
-from rios import ratapplier, rat
+from rios import ratapplier
 from osgeo import ogr
-from osgeo import gdal
 from tuiview import vectorrasterizer
 
 # can't import the recode plugin which is a bit of a pain...
 RECODE_EXT = ".recode"
 "Extension after the image file extension that the recodes are saved to"
+
 
 def getCmdargs():
     """
@@ -55,6 +55,7 @@ def getCmdargs():
         raise SystemExit('Must specify input and output filenames')
 
     return cmdargs
+
 
 def riosRecode(info, inputs, outputs, otherArgs):
     """
@@ -83,6 +84,7 @@ def riosRecode(info, inputs, outputs, otherArgs):
 
     # make 2d
     outputs.output = numpy.expand_dims(data, 0)
+
 
 def doRecodes(input, output, recodes=None, noRAT=False):
     """
@@ -132,6 +134,7 @@ def doRecodes(input, output, recodes=None, noRAT=False):
         print('copying the RAT')
         progress = cuiprogress.GDALProgressBar()
         ratapplier.copyRAT(input, output, progress)
+
 
 if __name__ == '__main__':
     cmdargs = getCmdargs()

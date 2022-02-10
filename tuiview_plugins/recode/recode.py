@@ -46,17 +46,21 @@ DEFAULT_OUTLINE_COLOR = (255, 255, 0, 255)
 RECODE_EXT = ".recode"
 "Extension after the image file extension that the recodes are saved to"
 
+
 def name():
     "Needed by TuiView"
     return 'Recode'
+
 
 def author():
     "Needed by TuiView"
     return 'Sam Gillingham'
 
+
 def description():
     "Needed by TuiView"
     return 'Tool for recoding areas of a image interactively'
+
 
 def action(actioncode, viewer):
     "Needed by TuiView"
@@ -66,6 +70,7 @@ def action(actioncode, viewer):
         # make sure the object isn't garbage collected
         app = QApplication.instance()
         app.savePluginHandler(handler)
+
         
 class Recode(QObject):
     """
@@ -147,9 +152,9 @@ class Recode(QObject):
             recodeName = oldLayer.filename + RECODE_EXT
             if os.path.exists(recodeName):
                 msg = ("There is already a recode file for this layer. " +
-                        "Do you want to load it?")
+                    "Do you want to load it?")
                 if QMessageBox.question(self.viewer, name(), msg, 
-                        QMessageBox.Yes|QMessageBox.No) == QMessageBox.Yes:
+                        QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
                     # Load it
                     s = open(recodeName).readline()
                     data = json.loads(s)
@@ -292,6 +297,7 @@ class Recode(QObject):
         fileobj.close()
         self.viewer.showStatusMessage("Recodes saved to %s" % fname)
 
+
 class RecodeRasterLayer(viewerlayers.ViewerRasterLayer):
     """
     Our Layer class derived from a normal raster layer. 
@@ -307,7 +313,7 @@ class RecodeRasterLayer(viewerlayers.ViewerRasterLayer):
         color = DEFAULT_OUTLINE_COLOR
         for value, code in zip(color, viewerLUT.RGBA_CODES):
             lutindex = viewerLUT.CODE_TO_LUTINDEX[code]
-            self.outlinelut[1,lutindex] = value
+            self.outlinelut[1, lutindex] = value
 
     def getImage(self):
         """
@@ -346,7 +352,7 @@ class RecodeRasterLayer(viewerlayers.ViewerRasterLayer):
             # paint the outlines onto the image using QPainter
             paint = QPainter(self.image)
 
-            drawpt = QPoint(0, 0) # top left
+            drawpt = QPoint(0, 0)  # top left
 
             # go through the polygons again - can't do this in one
             # pass as the colour we want for the outlines might not
@@ -361,6 +367,7 @@ class RecodeRasterLayer(viewerlayers.ViewerRasterLayer):
                 # draw this image onto the original
                 paint.drawImage(drawpt, outlineimage)
             paint.end()
+
 
 class RecodeDialog(QDialog):
     """
@@ -413,6 +420,7 @@ class RecodeDialog(QDialog):
         Returns comment as entered by the user
         """
         return self.commentEdit.text()
+
 
 class RecodeTableModel(QAbstractTableModel):
     """

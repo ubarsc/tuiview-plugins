@@ -39,14 +39,18 @@ import math
 # set in action() below
 GEOLINKED_VIEWERS = None
 
+
 def name():
     return 'GPS Marker'
+
 
 def author():
     return 'Sam Gillingham'
 
+
 def description():
     return 'Shows GPS location on the viewer. Requires gpsd.'
+
 
 class GPSMarker(QObject):
     def __init__(self, viewer):
@@ -117,7 +121,7 @@ class GPSMarker(QObject):
 
         if self.timer is None:
             self.timer = QTimer()
-            self.connect(self.timer, SIGNAL("timeout()"), self.updateGPS)
+            self.timer.timeout.connect(self.updateGPS)
         self.timer.start(1000)
         self.setEnableLogging(False)
         self.setOtherGPSMarkerState(False)
@@ -154,14 +158,13 @@ class GPSMarker(QObject):
                         self.coordTrans = osr.CreateCoordinateTransformation(gpsSR, tuiviewSR)
                         if self.coordTrans is None:
                             print('Unable to create coordinate transform. ' + 
-                                    'Check GDAL built with proj.4 support')
+                                'Check GDAL built with proj.4 support')
                         break
                         
-
     def updateGPS(self):
         if self.gpsd is not None:
             try:
-                report = self.gpsd.next()
+                self.gpsd.next()
 
                 if self.coordTrans is None:
                     self.setCoordinateTransform()
