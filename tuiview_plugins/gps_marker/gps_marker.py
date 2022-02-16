@@ -23,7 +23,6 @@ https://bitbucket.org/chchrsc/tuiview/wiki/Plugins
 
 # Needs gpsd + Python bindings installed
 # Python3 version of bindings here: https://github.com/tpoche/gps-python3
-from __future__ import print_function
 
 try:
     import gps
