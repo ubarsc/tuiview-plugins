@@ -36,7 +36,8 @@ setup(name='tuiview-plugins',
       scripts=scripts_list,
       packages=['tuiview_plugins', 'tuiview_plugins/collect_shapefile',
             'tuiview_plugins/gps_marker', 'tuiview_plugins/location_broadcast',
-            'tuiview_plugins/recode', 'tuiview_plugins/timeseries'],
+            'tuiview_plugins/recode', 'tuiview_plugins/timeseries', 
+            'tuiview_plugins/scalebar_nth_arrow'],
       license='LICENSE.txt', 
       url='https://bitbucket.org/chchrsc/tuiview-plugins'
       )
