@@ -29,8 +29,15 @@ from PyQt5.QtGui import QPen, QPainter, QColor
 
 LINE_WIDTH = 1
 LINE_COLOR = QColor(255, 255, 0, 255)
-MARGIN_FRACTION = 0.1
-ARROW_HEIGHT_FRACTION = 0.15
+MARGIN_FRACTION = 0.02
+ARROW_HEIGHT_FRACTION = 0.07
+HALF_ARROW_FRACTION = 0.01
+NORTH_CHARACTER = 'N'
+SCALE_MIN_FRACTION = 0.3
+SCALE_MAX_FRACTION = 0.6
+SCALE_NOTCHES_SIZE = 0.005
+M_TO_KM_THRESHOLD = 10000
+
 
 def name():
     return 'Scalebar and North Arrow'
@@ -51,19 +58,24 @@ class ScaleBarNthArrowQueryPointLayer(viewerlayers.ViewerQueryPointLayer):
     
     Done this way as ViewerQueryPointLayer always stays on top of all the layers.
     """
-    def __init__(self, qplayer):
+    def __init__(self, qplayer, nthArrow=True, scaleBar=True):
         # basically a copy constructor
         self.coordmgr = qplayer.coordmgr
         self.queryPoints = qplayer.queryPoints
         self.image = qplayer.image
+        self.nthArrow = nthArrow
+        self.scaleBar = scaleBar
         
     def getImage(self):
         """
+        Override the base class implementation
         """
         # draw any query points
         super().getImage()
+        # check is image isNull - no image loaded or we aren't drawing
+        if self.image.isNull() or (not self.nthArrow and not self.scaleBar):
+            return
         # now draw our stuff
-        print("ScaleBarNthArrowQueryPointLayer")
 
         pen = QPen()
         pen.setWidth(LINE_WIDTH)
@@ -71,25 +83,80 @@ class ScaleBarNthArrowQueryPointLayer(viewerlayers.ViewerQueryPointLayer):
 
         paint = QPainter(self.image)
         paint.setPen(pen)
+        fm = paint.fontMetrics()
+        margin = int(self.coordmgr.dspWidth * MARGIN_FRACTION)
+
+        if self.nthArrow:
+            n_rect = fm.boundingRect(NORTH_CHARACTER)
         
-        # nth arrow
-        margin = self.coordmgr.dspWidth * MARGIN_FRACTION
-        arrowX = int(self.coordmgr.dspWidth - margin)
-        arrowY = int(margin)
-        arrowHeight = int(self.coordmgr.dspHeight * ARROW_HEIGHT_FRACTION)
-        paint.drawLine(arrowX, arrowY, arrowX, arrowY + arrowHeight)
-        
+            # nth arrow
+            arrowX = self.coordmgr.dspWidth - margin
+            arrowY = margin + n_rect.height()
+            arrowHeight = int(self.coordmgr.dspHeight * ARROW_HEIGHT_FRACTION)
+            # line
+            paint.drawLine(arrowX, arrowY, arrowX, arrowY + arrowHeight)
+            # arrow
+            arrowSize = int(self.coordmgr.dspWidth * HALF_ARROW_FRACTION)
+            paint.drawLine(arrowX, arrowY, arrowX - arrowSize, arrowY + arrowSize)
+            paint.drawLine(arrowX, arrowY, arrowX + arrowSize, arrowY + arrowSize)
+            # N character
+            paint.drawText(int(arrowX - (n_rect.width() / 2)), arrowY, NORTH_CHARACTER)
+            
+        if self.scaleBar:
+            yDspLoc = self.coordmgr.dspHeight - margin
+            leftCoord = self.coordmgr.display2world(margin, yDspLoc)
+            # check we actually have something loaded
+            if leftCoord is not None:
+                minSizeDsp = int(self.coordmgr.dspWidth * SCALE_MIN_FRACTION)
+                maxSizeDsp = int(self.coordmgr.dspWidth * SCALE_MAX_FRACTION)
+                minCoord = self.coordmgr.display2world(margin + minSizeDsp, yDspLoc)
+                maxCoord = self.coordmgr.display2world(margin + maxSizeDsp, yDspLoc)
+                
+                minSizeWld = minCoord[0] - leftCoord[0]
+                maxSizeWld = maxCoord[0] - leftCoord[0]
+                mult = 10 ** len(str(int(maxSizeWld)))
+                size = None
+                while True:
+                    size = int(maxSizeWld / mult) * mult
+                    if size >= minSizeWld:
+                        break
+                    mult /= 10
+                    
+                dspXEnd, dspYEnd = self.coordmgr.world2display(leftCoord[0] + size, leftCoord[1])
+                dspXEnd = int(dspXEnd)
+                dspYEnd = int(dspYEnd)
+                paint.drawLine(margin, yDspLoc, dspXEnd, dspYEnd)
+                # notches
+                halfNotchesSize = int((self.coordmgr.dspWidth * SCALE_NOTCHES_SIZE) / 2)
+                paint.drawLine(margin, yDspLoc - halfNotchesSize, margin, yDspLoc + halfNotchesSize)
+                paint.drawLine(dspXEnd, yDspLoc - halfNotchesSize, dspXEnd, yDspLoc + halfNotchesSize)
+                # 0 point
+                zeroRect = fm.boundingRect('0')
+                paint.drawText(int(margin - (zeroRect.width() / 2)), yDspLoc - halfNotchesSize - 1, '0') 
+                # end text
+                if size > M_TO_KM_THRESHOLD:
+                    size /= 1000
+                    if int(size) == size:
+                        size = int(size)
+                    # do we need to show a decimal place?
+                    sizeText = '{}km'.format(size)
+                else:
+                    sizeText = '{}m'.format(int(size))
+                sizeRect = fm.boundingRect(sizeText)
+                paint.drawText(int(dspXEnd - (sizeRect.width() / 2)), dspYEnd - halfNotchesSize - 1, sizeText)
+            
         paint.end()
+
     
 class ScaleBarNthArrow(QObject):
     def __init__(self, viewer):
         QObject.__init__(self)
         
-        self.scaleBarAction = QAction(viewer)
+        self.scaleBarAction = QAction(viewer, toggled=self.stateChanged)
         self.scaleBarAction.setCheckable(True)
         self.scaleBarAction.setText("Show Scale Bar")
 
-        self.northArrowAction = QAction(viewer)
+        self.northArrowAction = QAction(viewer, toggled=self.stateChanged)
         self.northArrowAction.setCheckable(True)
         self.northArrowAction.setText("Show North Arrow")
         
@@ -97,10 +164,36 @@ class ScaleBarNthArrow(QObject):
         scaleNthArrowMenu.addAction(self.scaleBarAction)
         scaleNthArrowMenu.addAction(self.northArrowAction)
         
-        # install our version of the query point layer
-        scalebarlayer = ScaleBarNthArrowQueryPointLayer(
-                viewer.viewwidget.layers.queryPointLayer)
-        viewer.viewwidget.layers.queryPointLayer = scalebarlayer
+        # checked off to start with
+        self.scalebarlayer = registerScaleBarNorthArrow(viewer, False, False)
+        self.viewer = viewer
+        
+    def stateChanged(self, checked):
+        """
+        Update what we are drawing from the actions 
+        """
+        self.scalebarlayer.nthArrow = self.northArrowAction.isChecked()
+        self.scalebarlayer.scaleBar = self.scaleBarAction.isChecked()
+        # redraw
+        self.scalebarlayer.getImage()
+        self.viewer.viewwidget.viewport().update()
+
+        
+def registerScaleBarNorthArrow(viewer, nthArrow=True, scaleBar=True):
+    """
+    Add the Scale bar and north arrow to the given viewer
+    """
+    # install our version of the query point layer
+    scalebarlayer = ScaleBarNthArrowQueryPointLayer(
+        viewer.viewwidget.layers.queryPointLayer, nthArrow, scaleBar)
+    viewer.viewwidget.layers.queryPointLayer = scalebarlayer
+    
+    # straight away get a new querypointlayer 
+    # (which should include our nth arrow and scale bar)
+    scalebarlayer.getImage()
+    viewer.viewwidget.viewport().update()
+    return scalebarlayer
+    
     
 def action(actioncode, viewer):
     if actioncode == pluginmanager.PLUGIN_ACTION_NEWVIEWER:
