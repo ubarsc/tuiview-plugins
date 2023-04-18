@@ -27,17 +27,21 @@ if NO_INSTALL_CMDLINE:
     scripts_list = None
 else:
     scripts_list = ['tuiviewpluginmgr']
-
+    
+PLUGINS_DIR = 'tuiview_plugins'
+    
+packages = [PLUGINS_DIR]
+for entry in os.scandir(PLUGINS_DIR):
+    if entry.is_dir() and not entry.name.startswith('__'):
+        packages.append(PLUGINS_DIR + '/' + entry.name)
+        
 setup(name='tuiview-plugins',
       version='1.0.0',
       description='Plugins for TuiView',
       author='Sam Gillingham',
       author_email='gillingham.sam@gmail.com',
       scripts=scripts_list,
-      packages=['tuiview_plugins', 'tuiview_plugins/collect_shapefile',
-            'tuiview_plugins/gps_marker', 'tuiview_plugins/location_broadcast',
-            'tuiview_plugins/recode', 'tuiview_plugins/timeseries', 
-            'tuiview_plugins/scalebar_nth_arrow'],
+      packages=packages,
       license='LICENSE.txt', 
       url='https://bitbucket.org/chchrsc/tuiview-plugins'
       )
