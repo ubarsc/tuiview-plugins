@@ -25,7 +25,7 @@ from tuiview import pluginmanager
 from tuiview import viewerlayers
 from PyQt5.QtCore import QObject
 from PyQt5.QtWidgets import QAction, QApplication
-from PyQt5.QtGui import QPen, QPainter, QColor
+from PyQt5.QtGui import QPen, QPainter, QColor, QFont
 
 LINE_WIDTH = 1
 LINE_COLOR = QColor(255, 255, 0, 255)
@@ -37,6 +37,8 @@ SCALE_MIN_FRACTION = 0.3
 SCALE_MAX_FRACTION = 0.6
 SCALE_NOTCHES_SIZE = 0.005
 M_TO_KM_THRESHOLD = 10000
+
+FONT = QFont('FreeMono', 10, 100)
 
 
 def name():
@@ -83,6 +85,7 @@ class ScaleBarNthArrowQueryPointLayer(viewerlayers.ViewerQueryPointLayer):
 
         paint = QPainter(self.image)
         paint.setPen(pen)
+        paint.setFont(FONT)
         fm = paint.fontMetrics()
         margin = int(self.coordmgr.dspWidth * MARGIN_FRACTION)
 
