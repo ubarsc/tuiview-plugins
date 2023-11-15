@@ -77,8 +77,8 @@ class ScaleBarNthArrowQueryPointLayer(viewerlayers.ViewerQueryPointLayer):
         # draw any query points
         super().getImage()
         # check is image isNull - no image loaded or we aren't drawing
-        if self.image.isNull() or (not self.nthArrow 
-                and not self.scaleBar and self.citation is None):
+        if self.image.isNull() or (not self.nthArrow and not 
+                self.scaleBar and self.citation is None):
             return
         # now draw our stuff
 
@@ -210,7 +210,6 @@ class ScaleBarNthArrow(QObject):
             self.scalebarlayer.getImage()
             self.viewer.viewwidget.viewport().update()
         
-
         
 def registerScaleBarNorthArrow(viewer, nthArrow=True, 
         scaleBar=True, citation=None):
