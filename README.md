@@ -2,8 +2,19 @@
 
 These plugins extend TuiView functionality. Mainly as an example of how to build plugins, but hopefully do a few useful things also. 
 
-Instructions on how to install them are to be found in the "Installing Plugin File" section of the [TuiView Plugins Documentation](https://github.com/ubarsc/tuiview/wiki/Plugins).
 
-Update:
-This package can now be installed with 'python setup.py install'. Then run: tuiviewpluginmgr
+This package can be used in 3 different ways:
 
+1. Clone repo and copy files or set the `TUIVIEW_PLUGINS_PATH` env var to the location of the individual plugin directions as 
+specified here in the [TuiView Plugins Documentation](https://github.com/ubarsc/tuiview/wiki/Plugins#installing-plugin-file). 
+Useful for development. 
+
+2. Clone repo and run `pip install .` to install all plugins and use the `tuiviewpluginmgr` GUI application (below)
+to:
+    a) determine which plugin(s) you wish to have active and,
+    b) how to set the `TUIVIEW_PLUGINS_PATH` env var to make this happen for your system.
+
+![tuiviewpluginmgr](pluginmgr.png)
+
+3. Clone repo and run `pip install .` to install all plugins and import the particular one you want into your Python script
+  to use when [scripting TuiView](https://github.com/ubarsc/tuiview/wiki/Saving-Images-From-Python).
