@@ -25,8 +25,8 @@ from tuiview import pluginmanager
 from tuiview import viewerlayers
 from tuiview.viewerstrings import MESSAGE_TITLE
 from PyQt5.QtCore import QObject, QRect, Qt
-from PyQt5.QtWidgets import QAction, QApplication, QInputDialog
-from PyQt5.QtGui import QPen, QPainter, QColor, QFont
+from PyQt5.QtWidgets import QAction, QApplication, QInputDialog, QFileDialog
+from PyQt5.QtGui import QPen, QPainter, QColor, QFont, QImage
 
 LINE_WIDTH = 1
 LINE_COLOR = QColor(255, 255, 0, 255)
@@ -57,11 +57,13 @@ def description():
 class ScaleBarNthArrowQueryPointLayer(viewerlayers.ViewerQueryPointLayer):
     """
     Alternative implementation of viewerlayers.ViewerQueryPointLayer that
-    calls the base class but also draws scale bar and north arrow if required.
+    calls the base class but also draws scale bar, north arrow, citation or
+    logo if required.
     
     Done this way as ViewerQueryPointLayer always stays on top of all the layers.
     """
-    def __init__(self, qplayer, nthArrow=True, scaleBar=True, citation=None):
+    def __init__(self, qplayer, nthArrow=True, scaleBar=True, 
+            citation=None, logo=None):
         # basically a copy constructor
         self.coordmgr = qplayer.coordmgr
         self.queryPoints = qplayer.queryPoints
@@ -69,6 +71,7 @@ class ScaleBarNthArrowQueryPointLayer(viewerlayers.ViewerQueryPointLayer):
         self.nthArrow = nthArrow
         self.scaleBar = scaleBar
         self.citation = citation
+        self.logo = logo
         
     def getImage(self):
         """
@@ -78,7 +81,8 @@ class ScaleBarNthArrowQueryPointLayer(viewerlayers.ViewerQueryPointLayer):
         super().getImage()
         # check is image isNull - no image loaded or we aren't drawing
         if self.image.isNull() or (not self.nthArrow and not 
-                self.scaleBar and self.citation is None):
+                self.scaleBar and self.citation is None and 
+                self.logo is None):
             return
         # now draw our stuff
 
@@ -156,6 +160,11 @@ class ScaleBarNthArrowQueryPointLayer(viewerlayers.ViewerQueryPointLayer):
                 self.image.height() - margin * 2)
             paint.drawText(rect, Qt.AlignLeft | Qt.AlignTop, self.citation.replace('\\n', '\n'))
             
+        if self.logo is not None:
+            x = self.image.width() - margin - self.logo.width()
+            y = self.image.height() - margin - self.logo.height()
+            paint.drawImage(x, y, self.logo)
+            
         paint.end()
 
     
@@ -174,13 +183,18 @@ class ScaleBarNthArrow(QObject):
         self.citationAction = QAction(viewer, triggered=self.changeCitation)
         self.citationAction.setText("Set Citation text")
         
+        self.logoAction = QAction(viewer, triggered=self.changeLogo)
+        self.logoAction.setText("Set logo")
+        
         scaleNthArrowMenu = viewer.menuBar().addMenu("Scale Bar")
         scaleNthArrowMenu.addAction(self.scaleBarAction)
         scaleNthArrowMenu.addAction(self.northArrowAction)
         scaleNthArrowMenu.addAction(self.citationAction)
+        scaleNthArrowMenu.addAction(self.logoAction)
         
         # checked off to start with
-        self.scalebarlayer = registerScaleBarNorthArrow(viewer, False, False, None)
+        self.scalebarlayer = registerScaleBarNorthArrow(viewer, False, False, 
+            None, None)
         self.viewer = viewer
         
     def stateChanged(self, checked):
@@ -209,16 +223,33 @@ class ScaleBarNthArrow(QObject):
             # redraw
             self.scalebarlayer.getImage()
             self.viewer.viewwidget.viewport().update()
+            
+    def changeLogo(self):
+        """
+        Allow the user to select a logo to display
+        """
+        imageFilter = "Images (*.png *.xpm *.jpg *.tif)"
+        fname, filter = QFileDialog.getOpenFileName(self.viewer, "Image File", 
+                        filter=imageFilter)
+        if fname != '':
+            self.scalebarlayer.logo = QImage(fname)
+        else:
+            self.scalebarlayer.logo = None
+                    
+        # redraw
+        self.scalebarlayer.getImage()
+        self.viewer.viewwidget.viewport().update()
         
-        
+
 def registerScaleBarNorthArrow(viewer, nthArrow=True, 
-        scaleBar=True, citation=None):
+        scaleBar=True, citation=None, logo=None):
     """
     Add the Scale bar and north arrow to the given viewer
     """
     # install our version of the query point layer
     scalebarlayer = ScaleBarNthArrowQueryPointLayer(
-        viewer.viewwidget.layers.queryPointLayer, nthArrow, scaleBar, citation)
+        viewer.viewwidget.layers.queryPointLayer, nthArrow, 
+        scaleBar, citation, logo)
     viewer.viewwidget.layers.queryPointLayer = scalebarlayer
     
     # straight away get a new querypointlayer 
