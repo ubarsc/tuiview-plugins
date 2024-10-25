@@ -25,8 +25,8 @@ import os
 import sys
 import time
 from tuiview import pluginmanager
-from PyQt5.QtCore import QObject
-from PyQt5.QtWidgets import QApplication
+from PySide6.QtCore import QObject
+from PySide6.QtWidgets import QApplication
 
 TMPDIR = os.getenv('TMP', '/tmp')
 if sys.platform == 'win32':
@@ -37,6 +37,9 @@ SHAREDFILE = os.path.join(TMPDIR, 'locationbcast_%s' % UID)
 
 
 class NewLocationHandler(QObject):
+    """
+    Class that contains the plugin
+    """
     def __init__(self, viewer):
         QObject.__init__(self)
         self.viewer = viewer

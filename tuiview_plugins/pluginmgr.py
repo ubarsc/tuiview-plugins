@@ -298,7 +298,7 @@ class PluginTableModel(QAbstractTableModel):
         if role == Qt.CheckStateRole and column == 0:
             row = index.row()
             name = self.pluginInfo[row][0]
-            if value == Qt.Checked:
+            if Qt.CheckState(value) == Qt.Checked:
                 if name not in self.selected:
                     self.selected.append(name)
             else:

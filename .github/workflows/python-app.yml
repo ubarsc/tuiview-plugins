@@ -6,11 +6,26 @@ jobs:
   do-flake8:
     runs-on: ubuntu-latest
 
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v2
-    - name: Setup Python
-      uses: actions/setup-python@v1
-    - name: Lint with flake8
-      uses: py-actions/flake8@v2
-     
+    steps: 
+        - uses: actions/checkout@v2
+        - uses: conda-incubator/setup-miniconda@v2
+          with:
+            miniforge-version: latest
+        - name: Install Dependencies
+          shell: bash -l {0}
+          run: |
+            sudo apt-get install libegl1 libglu1-mesa
+            conda install pylint flake8 gdal pyside6
+        - name: Test Build
+          shell: bash -l {0}
+          run: |
+            pip install .
+        # Disabled until we have tuiview PySide6 in conda
+        #- name: Lint with pylint
+        #  shell: bash -l {0}
+        #  run: |
+        #    pylint *.py tuiview_plugins/*/*.py
+        - name: Lint with flake8
+          shell: bash -l {0}
+          run: |
+            flake8

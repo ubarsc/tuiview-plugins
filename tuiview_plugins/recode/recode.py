@@ -27,6 +27,7 @@ import os
 import json
 import numpy
 from osgeo import ogr
+from osgeo import gdal_array
 from tuiview import pluginmanager
 from tuiview import viewerlayers
 from tuiview import vectorrasterizer
@@ -34,11 +35,11 @@ from tuiview import viewerLUT
 from tuiview.viewerwidget import VIEWER_TOOL_POLYGON, VIEWER_TOOL_NONE
 from tuiview.viewerwidget import VIEWER_TOOL_QUERY
 
-from PyQt5.QtGui import QImage, QPainter
-from PyQt5.QtCore import QObject, QAbstractTableModel, Qt, QPoint
-from PyQt5.QtWidgets import QAction, QApplication, QMessageBox, QHBoxLayout
-from PyQt5.QtWidgets import QVBoxLayout, QPushButton, QTableView, QDialog
-from PyQt5.QtWidgets import QLineEdit
+from PySide6.QtGui import QImage, QPainter, QAction
+from PySide6.QtCore import QObject, QAbstractTableModel, Qt, QPoint
+from PySide6.QtWidgets import QApplication, QMessageBox, QHBoxLayout
+from PySide6.QtWidgets import QVBoxLayout, QPushButton, QTableView, QDialog
+from PySide6.QtWidgets import QLineEdit
 
 DEFAULT_OUTLINE_COLOR = (255, 255, 0, 255)
 "Colour that the outlines are shown in, if displayed"
@@ -138,7 +139,7 @@ class Recode(QObject):
 
             # check not floating point
             firstBand = oldLayer.gdalDataset.GetRasterBand(1)
-            numpyType = viewerlayers.GDALTypeToNumpyType(firstBand.DataType)
+            numpyType = gdal_array.GDALTypeCodeToNumericTypeCode(firstBand.DataType)
             if numpy.issubdtype(numpyType, float):
                 QMessageBox.critical(self.viewer, name(),
                         "Layer must be integer")
@@ -248,7 +249,7 @@ class Recode(QObject):
         ptGeom = ogr.Geometry(ogr.wkbPoint)
         ptGeom.AddPoint(queryInfo.easting, queryInfo.northing)
         foundIdx = None
-        for idx, (geom, comment, recodes) in enumerate(self.recodeList):
+        for idx, (geom, comment, _) in enumerate(self.recodeList):
             if geom.Contains(ptGeom):
                 # found one. Should we always stop here?
                 foundIdx = idx
@@ -330,12 +331,12 @@ class RecodeRasterLayer(viewerlayers.ViewerRasterLayer):
         (xsize, ysize) = (self.coordmgr.dspWidth, self.coordmgr.dspHeight)
 
         # apply the recodes
-        for geom, comment, recodes in self.recode.recodeList:
+        for geom, _, recodes in self.recode.recodeList:
             # create a mask
             mask = vectorrasterizer.rasterizeGeometry(geom, extent, 
                     xsize, ysize, 1, True)
             # convert to 0s and 1s to bool
-            mask = (mask == 1)
+            mask = mask == 1
 
             # apply the codes
             # always sort on the old value??
@@ -356,7 +357,7 @@ class RecodeRasterLayer(viewerlayers.ViewerRasterLayer):
             # go through the polygons again - can't do this in one
             # pass as the colour we want for the outlines might not
             # be in the LUT.
-            for geom, comment, recodes in self.recode.recodeList:
+            for geom, _, recodes in self.recode.recodeList:
                 # this time just get the outlines
                 mask = vectorrasterizer.rasterizeGeometry(geom, extent, 
                     xsize, ysize, 1, False)

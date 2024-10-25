@@ -24,16 +24,17 @@ https://github.com/ubarsc/tuiview/wiki/Plugins
 # Needs gpsd + Python bindings installed
 # Python3 version of bindings here: https://github.com/tpoche/gps-python3
 
+import math
 try:
     import gps
 except ImportError:
     print('gps module not found - plugin will not work as expected')
 from tuiview import pluginmanager
 from tuiview.viewerlayers import CURSOR_CROSSHAIR
-from PyQt5.QtCore import QObject, QTimer, Qt
-from PyQt5.QtWidgets import QAction, QApplication, QMessageBox
+from PySide6.QtCore import QObject, QTimer, Qt
+from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtGui import QAction
 from osgeo import osr
-import math
 
 # set in action() below
 GEOLINKED_VIEWERS = None
@@ -52,6 +53,9 @@ def description():
 
 
 class GPSMarker(QObject):
+    """
+    Class that is the plugin
+    """
     def __init__(self, viewer):
         QObject.__init__(self)
         self.viewer = viewer
@@ -174,7 +178,7 @@ class GPSMarker(QObject):
                     lat = self.gpsd.fix.latitude
                     if (lat != 0 and not math.isnan(lat) and 
                             long != 0 and not math.isnan(long)):
-                        (easting, northing, z) = self.coordTrans.TransformPoint(long, lat)
+                        (easting, northing, _) = self.coordTrans.TransformPoint(long, lat)
                         if easting == 0 or northing == 0:
                             print('coord transform failed')
                         else:
