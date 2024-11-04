@@ -15,13 +15,17 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+"""
+A Gui manager for plugins
+"""
+
 import os
 import sys
 import argparse
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget
-from PyQt5.QtWidgets import QTableView, QHBoxLayout, QVBoxLayout, QPushButton
-from PyQt5.QtWidgets import QTextEdit
-from PyQt5.QtCore import Qt, QAbstractTableModel, QSettings, pyqtSignal
+from PySide6.QtWidgets import QApplication, QMainWindow, QWidget
+from PySide6.QtWidgets import QTableView, QHBoxLayout, QVBoxLayout, QPushButton
+from PySide6.QtWidgets import QTextEdit
+from PySide6.QtCore import Qt, QAbstractTableModel, QSettings, Signal
 
 from tuiview import pluginmanager
 
@@ -64,13 +68,13 @@ def getPluginInfo(quiet=False):
             mgr.loadPluginsFromDir(entry.path)
 
     # now go through all the plugins loaded
-    for name in mgr.plugins:
-        author = getattr(mgr.plugins[name], pluginmanager.PLUGIN_AUTHOR_FN)
+    for name, plugin in mgr.plugins.items():
+        author = getattr(plugin, pluginmanager.PLUGIN_AUTHOR_FN)
         authorTxt = author()
-        desc = getattr(mgr.plugins[name], PLUGIN_DESC_FN)
+        desc = getattr(plugin, PLUGIN_DESC_FN)
         descTxt = desc()
 
-        subdir = os.path.dirname(mgr.plugins[name].__file__)
+        subdir = os.path.dirname(plugin.__file__)
         path = os.path.join(PLUGINS_LOC, subdir)
         path = os.path.abspath(path)
 
@@ -125,7 +129,10 @@ Run '%s -h' for information on printing this command so it can be sourced/eval'd
         os.path.basename(sys.argv[0]))
 
 
-class PluginGuiApplicaton(QApplication):
+class PluginGuiApplication(QApplication):
+    """
+    The application
+    """
     def __init__(self, pluginInfo, gui=True):
         QApplication.__init__(self, sys.argv)
 
@@ -150,6 +157,9 @@ class PluginGuiApplicaton(QApplication):
 
 
 class PluginGuiWindow(QMainWindow):
+    """
+    The window of the app
+    """
     def __init__(self, pluginInfo, selected):
         QMainWindow.__init__(self)
         self.setWindowTitle(MESSAGE_TITLE)
@@ -162,6 +172,9 @@ class PluginGuiWindow(QMainWindow):
 
 
 class PluginGuiWidget(QWidget):
+    """
+    The main widget of the app
+    """
     def __init__(self, parent, pluginInfo, selected):
         QWidget.__init__(self, parent)
         self.parent = parent
@@ -213,8 +226,11 @@ class PluginGuiWidget(QWidget):
 
 
 class PluginTableModel(QAbstractTableModel):
+    """
+    Manage the table
+    """
     # signals
-    selectedChangedSig = pyqtSignal(name='selectedChanged')
+    selectedChangedSig = Signal(name='selectedChanged')
 
     def __init__(self, parent, pluginInfo, selected):
         QAbstractTableModel.__init__(self, parent)
@@ -282,7 +298,7 @@ class PluginTableModel(QAbstractTableModel):
         if role == Qt.CheckStateRole and column == 0:
             row = index.row()
             name = self.pluginInfo[row][0]
-            if value == Qt.Checked:
+            if Qt.CheckState(value) == Qt.Checked:
                 if name not in self.selected:
                     self.selected.append(name)
             else:
@@ -346,7 +362,7 @@ def run():
     cmdargs = getCmdargs()
 
     pluginInfo = getPluginInfo(cmdargs.source)
-    app = PluginGuiApplicaton(pluginInfo, not cmdargs.source)
+    app = PluginGuiApplication(pluginInfo, not cmdargs.source)
 
     if cmdargs.source:
         # print line and exit

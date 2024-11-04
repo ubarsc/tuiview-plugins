@@ -24,9 +24,9 @@ https://github.com/ubarsc/tuiview/wiki/Plugins
 from tuiview import pluginmanager
 from tuiview import viewerlayers
 from tuiview.viewerstrings import MESSAGE_TITLE
-from PyQt5.QtCore import QObject, QRect, Qt
-from PyQt5.QtWidgets import QAction, QApplication, QInputDialog, QFileDialog
-from PyQt5.QtGui import QPen, QPainter, QColor, QFont, QImage
+from PySide6.QtCore import QObject, QRect, Qt
+from PySide6.QtWidgets import QApplication, QInputDialog, QFileDialog
+from PySide6.QtGui import QPen, QPainter, QColor, QFont, QImage, QAction
 
 LINE_WIDTH = 1
 LINE_COLOR = QColor(255, 255, 0, 255)
@@ -64,6 +64,7 @@ class ScaleBarNthArrowQueryPointLayer(viewerlayers.ViewerQueryPointLayer):
     """
     def __init__(self, qplayer, nthArrow=True, scaleBar=True, 
             citation=None, logo=None):
+        super().__init__()
         # basically a copy constructor
         self.coordmgr = qplayer.coordmgr
         self.queryPoints = qplayer.queryPoints
@@ -167,8 +168,17 @@ class ScaleBarNthArrowQueryPointLayer(viewerlayers.ViewerQueryPointLayer):
             
         paint.end()
 
-    
+    def toFile(self, fileobj):
+        """
+        This doesn't make sense
+        """
+        raise NotImplementedError()
+
+
 class ScaleBarNthArrow(QObject):
+    """
+    Object that is the plugin. Create actions and menu.
+    """
     def __init__(self, viewer):
         QObject.__init__(self)
         
@@ -229,7 +239,7 @@ class ScaleBarNthArrow(QObject):
         Allow the user to select a logo to display
         """
         imageFilter = "Images (*.png *.xpm *.jpg *.tif)"
-        fname, filter = QFileDialog.getOpenFileName(self.viewer, "Image File", 
+        fname, _ = QFileDialog.getOpenFileName(self.viewer, "Image File", 
                         filter=imageFilter)
         if fname != '':
             self.scalebarlayer.logo = QImage(fname)

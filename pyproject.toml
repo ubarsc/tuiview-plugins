@@ -1,0 +1,26 @@
+# Installation requires pip>=23.0.
+#
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "TuiView-Plugins"
+dynamic = ["version"]
+authors = [
+    {name = "Sam Gillingham", email = "gillingham.sam@gmail.com"}
+]
+description = "Plugins for TuiView"
+readme = "README.md"
+license = {file = "LICENSE.txt"}
+
+[project.scripts]
+tuiviewpluginmgr = "tuiview_plugins.pluginmgr:run"
+
+[project.urls]
+Repository = "https://github.com/ubarsc/tuiview-plugins"
+Homepage = "https://github.com/ubarsc/tuiview-plugins"
+
+[tool.setuptools.packages.find]
+namespaces = false      # Excludes subdirectories with no __init__.py

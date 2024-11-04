@@ -32,10 +32,12 @@ from tuiview.plotscalingdialog import PlotScalingDialog
 from tuiview.viewerwidget import VIEWER_TOOL_POLYGON, VIEWER_TOOL_NONE
 from tuiview.viewerwidget import VIEWER_TOOL_QUERY
 
-from PyQt5.QtCore import QObject, Qt, pyqtSignal
-from PyQt5.QtWidgets import QAction, QApplication, QMessageBox, QActionGroup
-from PyQt5.QtWidgets import QVBoxLayout, QDockWidget, QWidget, QToolBar
-from PyQt5.QtGui import QPen, QIcon
+from PySide6.QtCore import QObject, Qt, Signal
+from PySide6.QtWidgets import QApplication, QMessageBox, QFileDialog
+from PySide6.QtWidgets import QVBoxLayout, QDockWidget, QWidget, QToolBar
+from PySide6.QtGui import QPen, QIcon, QAction, QPainter, QPageLayout
+from PySide6.QtGui import QActionGroup
+from PySide6.QtPrintSupport import QPrinter
 
 PLOT_PADDING = 0.05  # of the range of data. Pads this amount above and below min/max
 
@@ -80,7 +82,7 @@ class TimeseriesDockWidget(QDockWidget):
     Dockable window that displays the timeseries plot
     """
     # signals
-    profileClosed = pyqtSignal(QDockWidget, name='profileClosed')
+    profileClosed = Signal(QDockWidget, name='profileClosed')
 
     def __init__(self, parent):
         QDockWidget.__init__(self, "Timeseries", parent)
@@ -138,14 +140,11 @@ class TimeseriesDockWidget(QDockWidget):
         Save the plot as a file. Either .pdf or .ps QPrinter
         chooses format based on extension.
         """
-        from PyQt5.QtGui import QPainter
-        from PyQt5.QtPrintSupport import QPrinter
-        from PyQt5.QtWidgets import QFileDialog
-        fname, filter = QFileDialog.getSaveFileName(self, "Plot File", 
+        fname, _ = QFileDialog.getSaveFileName(self, "Plot File", 
                     filter="PDF (*.pdf);;Postscript (*.ps)")
         if fname != '':
             printer = QPrinter()
-            printer.setOrientation(QPrinter.Landscape)
+            printer.setPageOrientation(QPageLayout.Landscape)
             printer.setColorMode(QPrinter.Color)
             printer.setOutputFileName(fname)
             printer.setResolution(96)

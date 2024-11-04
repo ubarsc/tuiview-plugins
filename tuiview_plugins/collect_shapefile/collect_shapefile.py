@@ -25,8 +25,9 @@ import os
 from tuiview import pluginmanager
 from tuiview.viewerwidget import VIEWER_TOOL_POLYGON, VIEWER_TOOL_NONE
 from tuiview.viewerwidget import VIEWER_TOOL_QUERY, VIEWER_TOOL_POLYLINE
-from PyQt5.QtCore import QObject
-from PyQt5.QtWidgets import QAction, QFileDialog, QApplication
+from PySide6.QtCore import QObject
+from PySide6.QtWidgets import QFileDialog, QApplication
+from PySide6.QtGui import QAction
 from osgeo import ogr
 from osgeo import osr
 
@@ -50,6 +51,9 @@ def description():
 
 
 class CollectShapefile(QObject):
+    """
+    Class that contains the plugin
+    """
     def __init__(self, viewer):
         QObject.__init__(self)
         self.ogrds = None
@@ -108,7 +112,7 @@ class CollectShapefile(QObject):
         """
         Create shapefile of the desired type
         """
-        fname, filter = QFileDialog.getSaveFileName(None, "Select Shape File name",
+        fname, _ = QFileDialog.getSaveFileName(None, "Select Shape File name",
                 "", "Shape Files (*.shp)")
         if fname is not None and fname != '':
             driver = ogr.GetDriverByName(DRIVERNAME)
@@ -129,7 +133,7 @@ class CollectShapefile(QObject):
             srs.ImportFromWkt(wkt)
                 
             lyrName = os.path.basename(fname)
-            lyrName, ext = os.path.splitext(lyrName)
+            lyrName, _ = os.path.splitext(lyrName)
             self.ogrlyr = self.ogrds.CreateLayer(lyrName, srs, geomType)
             if self.ogrlyr is None:
                 self.ogrds = None
@@ -147,7 +151,7 @@ class CollectShapefile(QObject):
         """
         self.ogrds.SyncToDisk()
         self.ogrds = None
-        self.ogrlyer = None
+        self.ogrlyr = None
         self.newPolyAction.setEnabled(True)
         self.newLineAction.setEnabled(True)
         self.newPointAction.setEnabled(True)
