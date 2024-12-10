@@ -27,6 +27,7 @@ import os
 import json
 import numpy
 from osgeo import ogr
+from osgeo import gdal_array
 from tuiview import pluginmanager
 from tuiview import viewerlayers
 from tuiview import vectorrasterizer
@@ -138,7 +139,7 @@ class Recode(QObject):
 
             # check not floating point
             firstBand = oldLayer.gdalDataset.GetRasterBand(1)
-            numpyType = viewerlayers.GDALTypeToNumpyType(firstBand.DataType)
+            numpyType = gdal_array.GDALTypeCodeToNumericTypeCode(firstBand.DataType)
             if numpy.issubdtype(numpyType, float):
                 QMessageBox.critical(self.viewer, name(),
                         "Layer must be integer")
