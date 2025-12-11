@@ -37,7 +37,7 @@ from tuiview.viewerwidget import VIEWER_TOOL_QUERY
 
 from PySide6.QtGui import QImage, QPainter, QAction
 from PySide6.QtCore import QObject, QAbstractTableModel, Qt, QPoint
-from PySide6.QtWidgets import QApplication, QMessageBox, QHBoxLayout
+from PySide6.QtWidgets import QMessageBox, QHBoxLayout
 from PySide6.QtWidgets import QVBoxLayout, QPushButton, QTableView, QDialog
 from PySide6.QtWidgets import QLineEdit
 
@@ -68,8 +68,7 @@ def action(actioncode, viewer):
         handler = Recode(viewer)
         
         # make sure the object isn't garbage collected
-        app = QApplication.instance()
-        app.savePluginHandler(handler)
+        viewer.plugins.append(handler)
 
         
 class Recode(QObject):

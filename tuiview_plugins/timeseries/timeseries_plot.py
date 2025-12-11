@@ -33,7 +33,7 @@ from tuiview.viewerwidget import VIEWER_TOOL_POLYGON, VIEWER_TOOL_NONE
 from tuiview.viewerwidget import VIEWER_TOOL_QUERY
 
 from PySide6.QtCore import QObject, Qt, Signal
-from PySide6.QtWidgets import QApplication, QMessageBox, QFileDialog
+from PySide6.QtWidgets import QMessageBox, QFileDialog
 from PySide6.QtWidgets import QVBoxLayout, QDockWidget, QWidget, QToolBar
 from PySide6.QtGui import QPen, QIcon, QAction, QPainter, QPageLayout
 from PySide6.QtGui import QActionGroup
@@ -73,8 +73,7 @@ def action(actioncode, viewer):
         handler = TimeseriesPlot(viewer)
         
         # make sure the object isn't garbage collected
-        app = QApplication.instance()
-        app.savePluginHandler(handler)
+        viewer.plugins.append(handler)
 
 
 class TimeseriesDockWidget(QDockWidget):

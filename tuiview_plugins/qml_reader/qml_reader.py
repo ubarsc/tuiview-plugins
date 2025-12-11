@@ -27,7 +27,7 @@ import xml.etree.ElementTree as ET
 
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtCore import QObject
-from PySide6.QtWidgets import QFileDialog
+from PySide6.QtWidgets import QFileDialog, QMessageBox
 
 from tuiview import pluginmanager
 from tuiview import viewerLUT
@@ -43,6 +43,7 @@ def author():
 
 def description():
     return 'Tool for adding QML reader to stretch and query window'
+
 
 def parseXML(xml):
     """
@@ -122,8 +123,8 @@ def getColorTable(colorDict, alphaDict, maxVal):
     """
     xobs = numpy.array(sorted(colorDict.keys()))
     xinterp = numpy.linspace(0, maxVal, maxVal + 1)  
-    ct = numpy.empty((maxVal + 2, 4), dtype=numpy.uint8) # + 2 because we need space for nodata
-    ct[maxVal + 1, ...] = 0 # nodata etc
+    ct = numpy.empty((maxVal + 2, 4), dtype=numpy.uint8)  # + 2 because we need space for nodata
+    ct[maxVal + 1, ...] = 0  # nodata etc
 
     for idx, name in enumerate(['red', 'green', 'blue']):
         yobs = getColorVal(colorDict, idx)

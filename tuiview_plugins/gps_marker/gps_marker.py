@@ -201,7 +201,7 @@ def action(actioncode, viewer):
         handler = GPSMarker(viewer)
         
         # make sure the object isn't garbage collected
-        app = QApplication.instance()
-        app.savePluginHandler(handler)
+        viewer.plugins.append(handler)
+
         
         
