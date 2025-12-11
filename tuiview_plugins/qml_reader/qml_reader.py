@@ -22,8 +22,8 @@ https://github.com/ubarsc/tuiview/wiki/Plugins
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 import os
-import numpy
 import xml.etree.ElementTree as ET
+import numpy
 
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtCore import QObject
@@ -126,11 +126,11 @@ def getColorTable(colorDict, alphaDict, maxVal):
     ct = numpy.empty((maxVal + 2, 4), dtype=numpy.uint8)  # + 2 because we need space for nodata
     ct[maxVal + 1, ...] = 0  # nodata etc
 
-    for idx, name in enumerate(['red', 'green', 'blue']):
+    for idx, colourname in enumerate(['red', 'green', 'blue']):
         yobs = getColorVal(colorDict, idx)
         # print(yobs)
         yinterp = numpy.interp(xinterp, xobs, yobs)
-        tuiview_idx = viewerLUT.CODE_TO_LUTINDEX[name]
+        tuiview_idx = viewerLUT.CODE_TO_LUTINDEX[colourname]
         ct[0:maxVal + 1, tuiview_idx] = yinterp
 
     # alpha
