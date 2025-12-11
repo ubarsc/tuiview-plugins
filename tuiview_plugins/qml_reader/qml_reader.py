@@ -22,13 +22,15 @@ https://github.com/ubarsc/tuiview/wiki/Plugins
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 import os
+import numpy
 import xml.etree.ElementTree as ET
 
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QIcon
 from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QFileDialog
 
 from tuiview import pluginmanager
+from tuiview import viewerLUT
 
 
 def name():
@@ -56,7 +58,7 @@ def parseXML(xml):
     colorrampshader = root.find('./pipe/rasterrenderer/rastershader/colorrampshader')
     if colorrampshader is not None:
         # ramp shader format
-        max_size = int(maximumValue.attrib['maximumValue'])
+        max_size = int(colorrampshader.attrib['maximumValue'])
         for item in colorrampshader.iter('item'):
             value = float(item.attrib['value'])
             color = item.attrib['color']
@@ -73,7 +75,7 @@ def parseXML(xml):
             for item in colorpalette.iter('paletteEntry'):
                 value = float(item.attrib['value'])
                 if value > max_size:
-                    max_size = value
+                    max_size = int(value)
                 color = item.attrib['color']
                 colorDict[value] = color
                 if 'alpha' in item.attrib:
@@ -113,6 +115,31 @@ def getAlphaVal(alphaDict):
     return numpy.array(result)
 
 
+def getColorTable(colorDict, alphaDict, maxVal):
+    """
+    Create a colour table (0-maxVal + 1) for the given dictionary of colours
+    0 - maxVal are the colour ramp, maxVal + 1 is zero for nodata
+    """
+    xobs = numpy.array(sorted(colorDict.keys()))
+    xinterp = numpy.linspace(0, maxVal, maxVal + 1)  
+    ct = numpy.empty((maxVal + 2, 4), dtype=numpy.uint8) # + 2 because we need space for nodata
+    ct[maxVal + 1, ...] = 0 # nodata etc
+
+    for idx, name in enumerate(['red', 'green', 'blue']):
+        yobs = getColorVal(colorDict, idx)
+        # print(yobs)
+        yinterp = numpy.interp(xinterp, xobs, yobs)
+        tuiview_idx = viewerLUT.CODE_TO_LUTINDEX[name]
+        ct[0:maxVal + 1, tuiview_idx] = yinterp
+
+    # alpha
+    yobs = getAlphaVal(alphaDict)
+    yinterp = numpy.interp(xinterp, xobs, yobs)
+    ct[0:maxVal + 1, 3] = yinterp
+
+    return ct
+
+
 class QMLReaderStretch(QObject):
     """
     Class for doing the QML reading
@@ -121,36 +148,48 @@ class QMLReaderStretch(QObject):
         QObject.__init__(self)
         self.stretch = stretch
         
+        # load icon from this dir
+        cdir = os.path.dirname(__file__)
+        iconpath = os.path.join(cdir, 'qgis_qml_icon.svg')
+        self.icon = QIcon(iconpath)
+        
         self.QMLAction = QAction(self, triggered=self.fromQML)
+        self.QMLAction.setIcon(self.icon)
         self.QMLAction.setText("Read from QML")
         
         stretch.toolBar.addAction(self.QMLAction)
         
     def fromQML(self):
-        print('fromQML')
-        
-        lut = self.stretch.layer.lut.lut
-        print(lut.shape)
         
         dirn = os.path.dirname(self.stretch.layer.filename)
         if dirn == '':
             dirn = os.getcwd()
-        
+
+        # ask the user to locate the QML        
         qml, _ = QFileDialog.getOpenFileName(self.stretch,
             "Select QML File", dirn, "QML file (*.qml)")
         if qml != "": 
             colorDict, alphaDict, max_size = parseXML(qml)
             
             viewerstretch = self.stretch.stretchLayout.getStretch()
-            viewerstretch.setNoStretch()
             if len(viewerstretch.bands) > 1:
                 QMessageBox.critical(self.stretch, name(), 
                         "Must be single band")
                 return
-                
             
-                        
+            # close the stretch window as it won't make any sense now
+            self.stretch.close()
 
+            # set up the stretch for 0 - max_size and add nodata at max_size + 1
+            self.stretch.layer.lut.bandinfo = viewerLUT.BandLUTInfo(1, 0, max_size + 1, 0, 
+                max_size, max_size + 1, max_size + 1, max_size + 1)
+            self.stretch.layer.lut.lut = getColorTable(colorDict, alphaDict, max_size)
+            
+            # no stretch (I think this makes sense)
+            self.stretch.layer.stretch.setNoStretch()
+            
+            self.stretch.layer.getImage()
+            self.stretch.viewwidget.viewport().update()
 
 
 def action(actioncode, window):
