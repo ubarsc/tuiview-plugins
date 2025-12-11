@@ -161,6 +161,12 @@ class QMLReaderStretch(QObject):
         stretch.toolBar.addAction(self.QMLAction)
         
     def fromQML(self):
+
+        viewerstretch = self.stretch.stretchLayout.getStretch()
+        if len(viewerstretch.bands) > 1:
+            QMessageBox.critical(self.stretch, name(), 
+                "Must be single band")
+            return
         
         dirn = os.path.dirname(self.stretch.layer.filename)
         if dirn == '':
@@ -171,12 +177,6 @@ class QMLReaderStretch(QObject):
             "Select QML File", dirn, "QML file (*.qml)")
         if qml != "": 
             colorDict, alphaDict, max_size = parseXML(qml)
-            
-            viewerstretch = self.stretch.stretchLayout.getStretch()
-            if len(viewerstretch.bands) > 1:
-                QMessageBox.critical(self.stretch, name(), 
-                        "Must be single band")
-                return
             
             # close the stretch window as it won't make any sense now
             self.stretch.close()
