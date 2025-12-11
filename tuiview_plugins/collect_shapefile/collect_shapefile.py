@@ -26,7 +26,7 @@ from tuiview import pluginmanager
 from tuiview.viewerwidget import VIEWER_TOOL_POLYGON, VIEWER_TOOL_NONE
 from tuiview.viewerwidget import VIEWER_TOOL_QUERY, VIEWER_TOOL_POLYLINE
 from PySide6.QtCore import QObject
-from PySide6.QtWidgets import QFileDialog, QApplication
+from PySide6.QtWidgets import QFileDialog
 from PySide6.QtGui import QAction
 from osgeo import ogr
 from osgeo import osr
@@ -226,5 +226,5 @@ def action(actioncode, viewer):
         handler = CollectShapefile(viewer)
         
         # make sure the object isn't garbage collected
-        app = QApplication.instance()
-        app.savePluginHandler(handler)
+        viewer.plugins.append(handler)
+

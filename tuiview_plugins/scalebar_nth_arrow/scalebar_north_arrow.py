@@ -25,7 +25,7 @@ from tuiview import pluginmanager
 from tuiview import viewerlayers
 from tuiview.viewerstrings import MESSAGE_TITLE
 from PySide6.QtCore import QObject, QRect, Qt
-from PySide6.QtWidgets import QApplication, QInputDialog, QFileDialog
+from PySide6.QtWidgets import QInputDialog, QFileDialog
 from PySide6.QtGui import QPen, QPainter, QColor, QFont, QImage, QAction
 
 LINE_WIDTH = 1
@@ -274,5 +274,4 @@ def action(actioncode, viewer):
         handler = ScaleBarNthArrow(viewer)
         
         # make sure the object isn't garbage collected
-        app = QApplication.instance()
-        app.savePluginHandler(handler)
+        viewer.plugins.append(handler)
