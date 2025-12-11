@@ -1,8 +1,10 @@
 # A collection of TuiView plugins #
 
-**Note this branch is for TuiView 1.3.x**
+**Note this branch is for TuiView 1.3.6 and layer**
 
 For TuiView 1.2.x see the [qt5 branch](https://github.com/ubarsc/tuiview-plugins/tree/qt5). 
+
+For TuiView 1.3.0 to 1.3.5 see the [TuiView 1.3.0 to 1.3.5 branch](https://github.com/ubarsc/tuiview-plugins/tree/tuiview_1.3.0-1.3.5)
 
 These plugins extend TuiView functionality. Mainly as an example of how to build plugins, but hopefully do a few useful things also. 
 
