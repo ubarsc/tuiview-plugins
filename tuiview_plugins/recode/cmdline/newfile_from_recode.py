@@ -35,6 +35,8 @@ from tuiview import vectorrasterizer
 RECODE_EXT = ".recode"
 "Extension after the image file extension that the recodes are saved to"
 
+DFLT_OUTPUT_DRIVER = 'KEA'
+
 
 def getCmdargs():
     """
@@ -47,7 +49,8 @@ def getCmdargs():
     p.add_argument('-o', '--output', help="output raster name")
     p.add_argument('-n', '--norat', default=False, action="store_true",
         help="Don't copy input RAT to output file. Default is to copy RAT")
-
+    p.add_argument("-f", "--format", default=DFLT_OUTPUT_DRIVER, 
+        help="Name of output GDAL format (default=%(default)s)")
     cmdargs = p.parse_args()
     if cmdargs.input is None or cmdargs.output is None:
         p.print_help()
@@ -85,7 +88,7 @@ def riosRecode(info, inputs, outputs, otherArgs):
     outputs.output = numpy.expand_dims(data, 0)
 
 
-def doRecodes(input, output, recodes=None, noRAT=False):
+def doRecodes(input, output, format, recodes=None, noRAT=False):
     """
     Calls RIOS to do the recoding.
     """
@@ -122,6 +125,7 @@ def doRecodes(input, output, recodes=None, noRAT=False):
     otherArgs.recodes = geomrecodes
 
     controls = applier.ApplierControls()
+    controls.setOutputDriverName(format)
     controls.progress = cuiprogress.GDALProgressBar()
     # always thematic??
     controls.setThematic(True)
@@ -129,12 +133,16 @@ def doRecodes(input, output, recodes=None, noRAT=False):
     applier.apply(riosRecode, inputs, outputs, otherArgs, controls=controls)
 
     # now the rat
-    if not noRAT and len(otherArgs.colNames) > 0:
+    if not noRAT:
         print('copying the RAT')
         progress = cuiprogress.GDALProgressBar()
         ratapplier.copyRAT(input, output, progress)
 
 
-if __name__ == '__main__':
+def run():
     cmdargs = getCmdargs()
-    doRecodes(cmdargs.input, cmdargs.output, cmdargs.recodes, cmdargs.norat)
+    doRecodes(cmdargs.input, cmdargs.output, cmdargs.format, cmdargs.recodes, cmdargs.norat)
+
+
+if __name__ == '__main__':
+    run()

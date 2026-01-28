@@ -115,7 +115,7 @@ class GPSMarker(QObject):
     def startLogging(self):
         try:
             if self.gpsd is None:
-                self.gpsd = gps.GPS(mode=gps.WATCH_ENABLE)
+                self.gpsd = gps.gps(mode=gps.WATCH_ENABLE)
             else:
                 self.gpsd.stream(gps.WATCH_ENABLE)
         except OSError: 
@@ -153,9 +153,9 @@ class GPSMarker(QObject):
                     wkt = layer.gdalDataset.GetProjection()
                     if wkt is not None and wkt != '':
                         gpsSR = osr.SpatialReference()
-                        # GPS uses 4328 but I can't get to work with 
-                        # GDAL so using 4326 instead. Hopefully not a big difference...
+                        # GPS uses 4328, but appears gpsd converts to 4326 internally  
                         gpsSR.ImportFromEPSG(4326)
+                        gpsSR.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
                         tuiviewSR = osr.SpatialReference()
                         tuiviewSR.ImportFromWkt(wkt)
                         self.coordTrans = osr.CreateCoordinateTransformation(gpsSR, tuiviewSR)
