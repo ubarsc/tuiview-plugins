@@ -136,7 +136,7 @@ def doRecodes(input, output, format, recodes=None, noRAT=False):
     if not noRAT:
         print('copying the RAT')
         progress = cuiprogress.GDALProgressBar()
-        ratapplier.copyRAT(input, output, progress)
+        ratapplier.copyRAT(input, output, progress, omitColumns=['Histogram'])
 
 
 def run():
