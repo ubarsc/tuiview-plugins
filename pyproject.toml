@@ -17,10 +17,14 @@ license = {file = "LICENSE.txt"}
 
 [project.scripts]
 tuiviewpluginmgr = "tuiview_plugins.pluginmgr:run"
+newfile_from_recode = "tuiview_plugins.recode.cmdline.newfile_from_recode:run"
 
 [project.urls]
 Repository = "https://github.com/ubarsc/tuiview-plugins"
 Homepage = "https://github.com/ubarsc/tuiview-plugins"
+
+[tool.setuptools.dynamic]
+version = {attr = "tuiview_plugins.__version__"}
 
 [tool.setuptools.packages.find]
 namespaces = false      # Excludes subdirectories with no __init__.py

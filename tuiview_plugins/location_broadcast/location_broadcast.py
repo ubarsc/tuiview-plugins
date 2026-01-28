@@ -2,7 +2,7 @@
 Location Broadcast plugin
 
 Copy into one of the locations mentioned here:
-https://bitbucket.org/chchrsc/tuiview/wiki/Plugins
+https://github.com/ubarsc/tuiview/wiki/Plugins
 """
 # This file is part of 'TuiView' - a simple Raster viewer
 # Copyright (C) 2012  Sam Gillingham
