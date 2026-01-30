@@ -118,6 +118,8 @@ class Recode(QObject):
         # etc get fired.
         viewer.viewwidget.polygonCollected.connect(self.newPolySelect)
         viewer.viewwidget.locationSelected.connect(self.newLocationSelected)
+        viewer.viewwidget.activeToolChanged.connect(self.activeToolChanged)
+        self.us_selecting_polygon = False  # updated so we only respond to us using the query point tool
 
     def startRecode(self):
         """
@@ -189,7 +191,7 @@ class Recode(QObject):
             self.showOutlinesAct.setEnabled(True)
             self.editCodesAct.setEnabled(True)
             self.saveRecodesAct.setEnabled(True)
-
+            
     def recodePolygon(self):
         """
         Called when the 'Recode Polygon' menu option is selected.
@@ -228,6 +230,12 @@ class Recode(QObject):
         self.recodeLayer.getImage()
         self.viewer.viewwidget.viewport().update()
 
+    def activeToolChanged(self, info):
+        """
+        Called when the tuiview active tool changed - set state when we asked for it.
+        """
+        self.us_selecting_polygon = id(self) == info.senderid and info.newTool == VIEWER_TOOL_QUERY
+
     def editCodes(self):
         """
         Called in response the the 'Edit Codes' menu option.
@@ -240,6 +248,8 @@ class Recode(QObject):
         A new point was selected - presumeably in response to the 
         request in the editCodes() function. 
         """
+        if not self.us_selecting_polygon:
+            return
         # turn off the tool.
         self.viewer.viewwidget.setActiveTool(VIEWER_TOOL_NONE, id(self))
 

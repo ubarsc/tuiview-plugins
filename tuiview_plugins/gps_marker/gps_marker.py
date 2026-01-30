@@ -32,7 +32,7 @@ except ImportError:
 from tuiview import pluginmanager
 from tuiview.viewerlayers import CURSOR_CROSSHAIR
 from PySide6.QtCore import QObject, QTimer, Qt
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QMessageBox
 from PySide6.QtGui import QAction
 from osgeo import osr
 
@@ -82,8 +82,7 @@ class GPSMarker(QObject):
         Sees if other GPS Marker plugins are logging or not
         """
         state = True
-        app = QApplication.instance()
-        for plugin in app.pluginHandlers:
+        for plugin in self.viewer.plugins:
             if isinstance(plugin, GPSMarker) and plugin is not self:
                 state = plugin.loggingEnabled
                 break
@@ -94,8 +93,7 @@ class GPSMarker(QObject):
         Tells all the other GPS Marker plugins of the new state
         so they can update GUI
         """
-        app = QApplication.instance()
-        for plugin in app.pluginHandlers:
+        for plugin in self.viewer.plugins:
             if isinstance(plugin, GPSMarker) and plugin is not self:
                 if not state:
                     plugin.setEnableLogging(state)
@@ -184,7 +182,7 @@ class GPSMarker(QObject):
                         else:
                             GEOLINKED_VIEWERS.setQueryPointAll(id(self), 
                                 easting, northing, Qt.white, 
-                                cursor=CURSOR_CROSSHAIR, size=5)
+                                cursor=CURSOR_CROSSHAIR, size=10)
 
             except StopIteration:
                 # no data
