@@ -1,5 +1,8 @@
 # A collection of TuiView plugins #
 
+Update: There is now a [blog post](https://ubarsc.github.io/tutorial/2026/01/26/tuiview-plugins.html)
+about these plugins.
+
 **Note this branch is for TuiView 1.3.6 and later**
 
 For TuiView 1.2.x see the [qt5 branch](https://github.com/ubarsc/tuiview-plugins/tree/qt5). 
