@@ -14,6 +14,7 @@ jobs:
         - name: Install Dependencies
           shell: bash -l {0}
           run: |
+            sudo apt-get update
             sudo apt-get install libegl1 libglu1-mesa
             conda install pylint=3.3.9 flake8 gdal pyside6 tuiview
         - name: Test Build
