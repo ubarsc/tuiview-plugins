@@ -22,13 +22,14 @@ https://github.com/ubarsc/tuiview/wiki/Plugins
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 import os
+import copy
 from osgeo import gdal
 
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtCore import QObject
 
 from tuiview import pluginmanager
-from tuiview.viewerRAT import DEFAULT_FLOAT_FMT, NEWCOL_INT, NEWCOL_FLOAT, NEWCOL_STRING, DEFAULT_CACHE_SIZE
+from tuiview.viewerRAT import DEFAULT_INT_FMT, DEFAULT_FLOAT_FMT, DEFAULT_STRING_FMT, NEWCOL_INT, NEWCOL_FLOAT, NEWCOL_STRING, DEFAULT_CACHE_SIZE
 from tuiview.querywindow import RAT_CACHE_CHUNKSIZE
 import ratzarr
 
@@ -70,13 +71,15 @@ class ZarrColumnsQuery(QObject):
         querywindow.toolBar.addAction(self.ZarrAction)
         
     def linkZarr(self):
-        print('linking zarr')
         rz = ratzarr.RatZarr('/data/git/tuiview-plugins_gillins/myzarr.zarr')
+        # TODO: thematic table model?
         if self.querywindow.tableModel is not None:
             if not isinstance(self.querywindow.tableModel.attributes, RatZarrAndGDALRat):
+                print('linking zarr')
                 ratzarr_and_gdal = RatZarrAndGDALRat(self.querywindow.tableModel.attributes, rz)
                 self.querywindow.tableModel.attributes = ratzarr_and_gdal
                 self.querywindow.tableModel.doUpdate(updateHorizHeader=True)
+                print('linked zarr')
                 # updating of colnames etc done in doUpdate
 
         
@@ -106,9 +109,9 @@ class RatZarrAndGDALRat:
         self.columnFormats = {}
         for col in self.columnNames:
             # TODO: get actual type
-            self.columnTypes[col] = gdal.GFT_Real
+            self.columnTypes[col] = gdal.GFT_Integer
             self.columnUsages[col] = gdal.GFU_Generic
-            self.columnFormats[col] = DEFAULT_FLOAT_FMT
+            self.columnFormats[col] = DEFAULT_INT_FMT
             
         self.hasRATColorTable = oldViewerRAT.hasRATColorTable
         self.hasOldStyleColorTable = oldViewerRAT.hasOldStyleColorTable
@@ -121,7 +124,8 @@ class RatZarrAndGDALRat:
         return self.oldViewerRAT.hasAttributes() or len(self.columnNames) > 0
         
     def getColumnNames(self): 
-        colnames = self.oldViewerRAT.getColumnNames()
+        # NB: copy list so we don't end up just changing it
+        colnames = copy.copy(self.oldViewerRAT.getColumnNames())
         colnames.extend(self.columnNames)
         return colnames
         
