@@ -23,14 +23,14 @@ https://github.com/ubarsc/tuiview/wiki/Plugins
 
 import os
 import copy
+import numpy
 from osgeo import gdal
 
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtCore import QObject
 
-from tuiview import pluginmanager
-from tuiview.viewerRAT import DEFAULT_INT_FMT, DEFAULT_FLOAT_FMT, DEFAULT_STRING_FMT, NEWCOL_INT, NEWCOL_FLOAT, NEWCOL_STRING, DEFAULT_CACHE_SIZE
-from tuiview.querywindow import RAT_CACHE_CHUNKSIZE
+from tuiview import pluginmanager, viewererrors
+from tuiview.viewerRAT import DEFAULT_INT_FMT, DEFAULT_FLOAT_FMT, DEFAULT_STRING_FMT, DEFAULT_CACHE_SIZE
 import ratzarr
 
 
@@ -90,6 +90,7 @@ class RatZarrAndGDALRat:
     """
     columnNames = None  # list
     columnTypes = None  # dict
+    columnTypesNumpy = None  # dict - numpy dtypes
     columnUsages = None  # dict
     columnFormats = None  # dict
     lookupColName = None  # string
@@ -105,13 +106,21 @@ class RatZarrAndGDALRat:
         self.ratzarrObj = ratzarrObj
         self.columnNames = ratzarrObj.getColumnNames()
         self.columnTypes = {}
+        self.columnTypesNumpy = {}
         self.columnUsages = {}
         self.columnFormats = {}
         for col in self.columnNames:
-            # TODO: get actual type
-            self.columnTypes[col] = gdal.GFT_Integer
+            numpydtype = ratzarrObj.getColumnDtype(col)
+            gdaltype = self.NumpyDTypeToGDALType(numpydtype)
+            self.columnTypes[col] = gdaltype
+            self.columnTypesNumpy[col] = numpydtype
             self.columnUsages[col] = gdal.GFU_Generic
-            self.columnFormats[col] = DEFAULT_INT_FMT
+            if gdaltype == gdal.GFT_Integer:
+                self.columnFormats[col] = DEFAULT_INT_FMT
+            elif gdaltype == gdal.GFT_Real:
+                self.columnFormats[col] = DEFAULT_FLOAT_FMT
+            else:
+                self.columnFormats[col] = DEFAULT_STRING_FMT
             
         self.hasRATColorTable = oldViewerRAT.hasRATColorTable
         self.hasOldStyleColorTable = oldViewerRAT.hasOldStyleColorTable
@@ -119,6 +128,18 @@ class RatZarrAndGDALRat:
         self.greenColumnIdx = oldViewerRAT.greenColumnIdx
         self.blueColumnIdx = oldViewerRAT.blueColumnIdx
         self.alphaColumnIdx = oldViewerRAT.alphaColumnIdx
+        
+    @staticmethod
+    def NumpyDTypeToGDALType(numpydtype):
+        """
+        Chooses the best appropriate Numpy column type based on a numpy dtype
+        """
+        if numpy.issubdtype(numpydtype, numpy.floating):
+            return gdal.GFT_Real
+        elif isinstance(numpydtype, numpy.dtypes.StringDType):
+            return gdal.GFT_String
+        # TODO: date/time?
+        return gdal.GFT_Integer
             
     def hasAttributes(self):
         return self.oldViewerRAT.hasAttributes() or len(self.columnNames) > 0
@@ -196,25 +217,37 @@ class RatZarrAndGDALRat:
         Removes attributes from this class
         """
         self.columnNames = None  # list
-        self.columnTypes = None  # dict
+        self.columnTypes = None  # dict -  GDAL types
+        self.columnTypesNumpy = None  # dict - numpy dtypes
         self.columnUsages = None  # dict
         self.columnFormats = None  # dict
         self.lookupColName = None  # string
         self.oldViewerRAT.clear()
         
     def addColumn(self, colname, coltype):
-        self.oldViewerRAT.addColumn(colName, colType)
+        """
+        Pass through to GDAL add column
+        """
+        self.oldViewerRAT.addColumn(colname, coltype)
         
-    def addColumnToZarr(self, colname, coltype):
+    def addColumnToZarr(self, colname, numpydtype):
+        """
+        Add as a zarr column
+        """
         # TODO: link this into the GUI somehow
-        if coltype == NEWCOL_INT:
-            coldtype = int
-        elif coltype == NEWCOL_FLOAT:
-            coldtype = float
+        self.ratzarrObj.createColumn(colname, numpydtype)
+        self.columnNames.append(colname)
+        gdaltype = self.NumpyDTypeToGDALType(numpydtype)
+        self.columnTypes[colname] = gdaltype
+        self.columnTypesNumpy[colname] = numpydtype
+        self.columnUsages[colname] = gdal.GFU_Generic
+        if gdaltype == gdal.GFT_Integer:
+            self.columnFormats[colname] = DEFAULT_INT_FMT
+        elif gdaltype == gdal.GFT_Real:
+            self.columnFormats[colname] = DEFAULT_FLOAT_FMT
         else:
-            coldtype = numpy.dtypes.StringDType()
-        self.ratzarrObj.createColumn(colName, coldtype)
-        
+            self.columnFormats[colname] = DEFAULT_STRING_FMT
+
     # readFromGDALBand/findColorTableColumns should already be called on viewerRAT on creation
     
     def arrangeColumnOrder(self, prefColOrder, gdalband):
@@ -403,14 +436,16 @@ class ZarrAndRATCache:
             if not selectionArraySubset.any():
                 # nothing to be updated
                 return
+
+            # coerce type
+            numpydtype = self.zarrObj.getColumnDtype(colName)
+            data = data.astype(numpydtype)
                 
             if not selectionArraySubset.all():
                 # some need to be updated
                 # keep old where selectionArray == False
                 olddata = self.cacheDict[colName] 
             
-                # TODO: do we need to coerce to the right type?
-                # do the masking
                 # it is assumed this will do the right thing when 
                 # string lengths are different
                 data = numpy.where(selectionArraySubset, data, olddata)
