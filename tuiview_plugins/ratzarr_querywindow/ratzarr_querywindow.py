@@ -47,6 +47,9 @@ def description():
     
     
 def action(actioncode, viewer):
+    """
+    Hook into a new query window
+    """
     if actioncode == pluginmanager.PLUGIN_ACTION_NEWQUERY:
         handler = ZarrColumnsQuery(viewer)
         
@@ -55,6 +58,9 @@ def action(actioncode, viewer):
         
 
 class ZarrColumnsQuery(QObject):
+    """
+    QObject that handles events from our toolbar buttons
+    """
     def __init__(self, querywindow):
         QObject.__init__(self)
         self.querywindow = querywindow
@@ -136,7 +142,7 @@ class RatZarrAndGDALRat:
         """
         if numpy.issubdtype(numpydtype, numpy.floating):
             return gdal.GFT_Real
-        elif isinstance(numpydtype, numpy.dtypes.StringDType):
+        elif isinstance(numpydtype, numpy.dtypes.StringDType):  # pylint: disable=no-member
             return gdal.GFT_String
         # TODO: date/time?
         return gdal.GFT_Integer
@@ -208,9 +214,9 @@ class RatZarrAndGDALRat:
         "Return column to be used to lookup color table"
         return self.lookupColName
 
-    def setLookupColName(self, name):
+    def setLookupColName(self, zname):
         "Set column to be used to lookup color table"
-        self.lookupColName = name
+        self.lookupColName = zname
 
     def clear(self):
         """
@@ -378,10 +384,10 @@ class ZarrAndRATCache:
         # update length
         self.length = self.gdalRATCache.length
         
-        for name in self.zarrColNames:
-            if colName is None or name == colName or name in colName:
-                data = self.zarrObj.readBlock(name, self.currStartRow, self.length)
-                self.zarrcacheDict[name] = data
+        for zname in self.zarrColNames:
+            if colName is None or zname == colName or zname in colName:
+                data = self.zarrObj.readBlock(zname, self.currStartRow, self.length)
+                self.zarrcacheDict[zname] = data
 
     def setStartRow(self, startRow, colName=None):
         """
@@ -444,14 +450,14 @@ class ZarrAndRATCache:
             if not selectionArraySubset.all():
                 # some need to be updated
                 # keep old where selectionArray == False
-                olddata = self.cacheDict[colName] 
+                olddata = self.zarrcacheDict[colName] 
             
                 # it is assumed this will do the right thing when 
                 # string lengths are different
                 data = numpy.where(selectionArraySubset, data, olddata)
 
             # update cache
-            self.cacheDict[colName] = data
+            self.zarrcacheDict[colName] = data
             # write back to file
             self.zarrObj.writeBlock(colName, data, self.currStartRow)
         else:
