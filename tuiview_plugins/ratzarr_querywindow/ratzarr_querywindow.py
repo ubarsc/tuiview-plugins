@@ -675,8 +675,8 @@ class AddColumnZarrDialog(QDialog):
 
         self.typeCombo = QComboBox()
         # get all the zarr types
-        for name, cls in zarrdtype.data_type_registry.contents.items():
-            self.typeCombo.addItem(name, cls)
+        for dname, cls in zarrdtype.data_type_registry.contents.items():
+            self.typeCombo.addItem(dname, cls)
 
         self.nameEdit = QLineEdit()
 
