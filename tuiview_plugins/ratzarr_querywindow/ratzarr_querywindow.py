@@ -68,14 +68,24 @@ class ZarrColumnsQuery(QObject):
 
         # load icon from this dir
         cdir = os.path.dirname(__file__)
-        iconpath = os.path.join(cdir, 'zarr-pink-stacked.svg')
-        self.icon = QIcon(iconpath)
+        zarriconpath = os.path.join(cdir, 'zarr-pink-stacked.svg')
+        self.zarricon = QIcon(zarriconpath)
         
         self.ZarrAction = QAction(self, triggered=self.linkZarr)
-        self.ZarrAction.setIcon(self.icon)
+        self.ZarrAction.setIcon(self.zarricon)
         self.ZarrAction.setText("Link a RatZarr file to this RAT")
         
         querywindow.toolBar.addAction(self.ZarrAction)
+        
+        unzarriconpath = os.path.join(cdir, 'zarr-pink-stacked-cross.svg')
+        self.unzarricon = QIcon(unzarriconpath)
+
+        self.UnZarrAction = QAction(self, triggered=self.unLinkZarr)
+        self.UnZarrAction.setIcon(self.unzarricon)
+        self.UnZarrAction.setText("UnLink the RatZarr file from this RAT")
+        self.UnZarrAction.setEnabled(False)
+
+        querywindow.toolBar.addAction(self.UnZarrAction)
         
     def linkZarr(self):
         rz = ratzarr.RatZarr('/data/git/tuiview-plugins_gillins/myzarr.zarr')
@@ -99,8 +109,27 @@ class ZarrColumnsQuery(QObject):
                         # updating of colnames etc done in doUpdate
                         # also update the lastLayer which is used for expressions
                         self.querywindow.lastLayer.attributes = ratzarr_and_gdal
+                        
+                        # allow unlinking
+                        self.UnZarrAction.setEnabled(True)
             else:
                 QMessageBox.critical(self.querywindow, name(), "RatZarr already linked. Unlink first")
+        else:
+            QMessageBox.critical(self.querywindow, name(), "Can only link RatZarr to Thematic layers")
+            
+    def unLinkZarr(self):
+        if self.querywindow.tableModel is not None:
+            if isinstance(self.querywindow.tableModel.attributes, RatZarrAndGDALRat):
+                ratzarr_and_gdal = self.querywindow.tableModel.attributes
+                self.querywindow.tableModel.attributes = ratzarr_and_gdal.oldViewerRAT
+                self.querywindow.tableModel.doUpdate(updateHorizHeader=True)
+                self.querywindow.lastLayer.attributes = ratzarr_and_gdal.oldViewerRAT
+
+                # allow unlinking
+                self.UnZarrAction.setEnabled(False)
+            else:
+                # should never get here as button should be disabled
+                QMessageBox.critical(self.querywindow, name(), "RatZarr file not linked")
         else:
             QMessageBox.critical(self.querywindow, name(), "Can only link RatZarr to Thematic layers")
 
