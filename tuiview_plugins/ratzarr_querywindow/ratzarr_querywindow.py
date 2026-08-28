@@ -150,6 +150,11 @@ class RatZarrAndGDALRat:
         self.greenColumnIdx = oldViewerRAT.greenColumnIdx
         self.blueColumnIdx = oldViewerRAT.blueColumnIdx
         self.alphaColumnIdx = oldViewerRAT.alphaColumnIdx
+        # This just needs to exist so viewerlayers.py/ViewerRasterLayer/changeUpdateAccess
+        # can del it. Probably a tider way. This isn't as ideal as all references to the
+        # open dataset won't be deleted.
+        # recreated by readFromGDALBand
+        self.gdalRAT = 1
         
     @staticmethod
     def NumpyDTypeToGDALType(numpydtype):
@@ -270,7 +275,14 @@ class RatZarrAndGDALRat:
         else:
             self.columnFormats[colname] = DEFAULT_STRING_FMT
 
-    # readFromGDALBand/findColorTableColumns should already be called on viewerRAT on creation
+    def readFromGDALBand(self, gdalband, gdaldataset):
+        # pass through. This will be called when the dataset
+        # is re opened in update mode.
+        self.oldViewerRAT.readFromGDALBand(gdalband, gdaldataset)
+        # recreate this so it can be deleted by viewerlayers.py/ViewerRasterLayer/changeUpdateAccess
+        self.gdalRAT = 1
+
+    # findColorTableColumns should already be called on viewerRAT on creation
     
     def arrangeColumnOrder(self, prefColOrder, gdalband):
         # TODO: how do we save ratzarr cols that have been reordered?
@@ -380,8 +392,63 @@ class RatZarrAndGDALRat:
             
     def evaluateUserEditExpression(self, colName, imports, expression, isselected, 
             queryRow):
-        # pass through
-        return self.oldViewerRAT.evaluateUserEditExpression(colName, imports, expression, isselected, queryRow)
+        if colName not in self.columnNames:
+            # pass through
+            self.oldViewerRAT.evaluateUserEditExpression(colName, imports, expression, isselected, queryRow)
+        else:
+            self.oldViewerRAT.newProgress.emit("Evaluating User Expression...")
+            cache = self.getCacheObject(DEFAULT_CACHE_SIZE)
+            nrows = self.getNumRows()
+    
+            currRow = 0
+            done = False
+            isScalar = False  # user code returns a scalar - we 
+            # can take shortcuts since not all the cols need to be read
+            resultSub = None
+    
+            # do any imports
+            importsDict = {}
+            exec(imports, importsDict)
+    
+            saneColumnNames = set(self.getSaneColumnNames())
+            columnsUsed = self.oldViewerRAT.findVarNamesUsed(expression, saneColumnNames)
+    
+            while currRow < nrows and not done:
+    
+                # guess the length
+                isselectedSub = isselected[currRow:currRow + DEFAULT_CACHE_SIZE]
+                if isselectedSub.any():
+    
+                    if isScalar:
+                        cache.setStartRow(currRow, colName)
+                    else:
+                        cache.setStartRow(currRow, (columnsUsed + [colName]))
+                    length = cache.getLength()
+    
+                    # re do with correct length
+                    isselectedSub = isselected[currRow:currRow + length]
+                    globaldict = self.getUserExpressionGlobals(cache, isselectedSub, 
+                                    queryRow, colNameList=columnsUsed)
+                    globaldict.update(importsDict)
+    
+                    if not isScalar:
+                        # can re-use the first result if scalar
+                        # all calls should be the same
+                        try:
+                            resultSub = eval(expression, globaldict)
+                        except Exception as exc:
+                            msg = formatException(expression)
+                            raise viewererrors.UserExpressionSyntaxError(msg) from exc
+    
+                    cache.updateColumn(colName, resultSub, isselected)
+    
+                    if numpy.isscalar(resultSub):
+                        isScalar = True
+    
+                currRow += DEFAULT_CACHE_SIZE
+                self.oldViewerRAT.newPercent.emit(int((currRow / nrows) * 100))
+    
+            self.oldViewerRAT.endProgress.emit()
         
     def exportSelectedRowsToCSV(self, isselected, outDocCsv):
         # pass through for now. Should we have a separate function for exporting
@@ -514,7 +581,10 @@ class ZarrAndRATCache:
 
             # coerce type
             numpydtype = self.zarrObj.getColumnDtype(colName)
-            data = data.astype(numpydtype)
+            if numpy.isscalar(data):
+                data = numpy.full(selectionArraySubset.shape, data, dtype=numpydtype)
+            else:
+                data = data.astype(numpydtype)
                 
             if not selectionArraySubset.all():
                 # some need to be updated
