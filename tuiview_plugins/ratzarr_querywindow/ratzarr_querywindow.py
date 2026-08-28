@@ -28,9 +28,10 @@ from osgeo import gdal
 
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtCore import QObject
+from PySide6.QtWidgets import QMessageBox
 
 from tuiview import pluginmanager, viewererrors
-from tuiview.viewerRAT import DEFAULT_INT_FMT, DEFAULT_FLOAT_FMT, DEFAULT_STRING_FMT, DEFAULT_CACHE_SIZE
+from tuiview.viewerRAT import formatException, DEFAULT_INT_FMT, DEFAULT_FLOAT_FMT, DEFAULT_STRING_FMT, DEFAULT_CACHE_SIZE
 import ratzarr
 
 
@@ -81,12 +82,27 @@ class ZarrColumnsQuery(QObject):
         # TODO: thematic table model?
         if self.querywindow.tableModel is not None:
             if not isinstance(self.querywindow.tableModel.attributes, RatZarrAndGDALRat):
-                print('linking zarr')
-                ratzarr_and_gdal = RatZarrAndGDALRat(self.querywindow.tableModel.attributes, rz)
-                self.querywindow.tableModel.attributes = ratzarr_and_gdal
-                self.querywindow.tableModel.doUpdate(updateHorizHeader=True)
-                print('linked zarr')
-                # updating of colnames etc done in doUpdate
+                rat = self.querywindow.tableModel.attributes
+                if rz.getRowCount() != rat.getNumRows():
+                    QMessageBox.critical(self.querywindow, name(), 
+                        "RatZarr file must have same number of rows as current file's Raster Attribute Table") 
+                else:
+                    origColNames = set(rat.getColumnNames())
+                    rzColNames = set(rz.getColumnNames())
+                    if len(origColNames.intersection(rzColNames)) > 0:
+                        QMessageBox.critical(self.querywindow, name(), 
+                            "Column names must be unique between GDAL and RatZarr files") 
+                    else:
+                        ratzarr_and_gdal = RatZarrAndGDALRat(rat, rz)
+                        self.querywindow.tableModel.attributes = ratzarr_and_gdal
+                        self.querywindow.tableModel.doUpdate(updateHorizHeader=True)
+                        # updating of colnames etc done in doUpdate
+                        # also update the lastLayer which is used for expressions
+                        self.querywindow.lastLayer.attributes = ratzarr_and_gdal
+            else:
+                QMessageBox.critical(self.querywindow, name(), "RatZarr already linked. Unlink first")
+        else:
+            QMessageBox.critical(self.querywindow, name(), "Can only link RatZarr to Thematic layers")
 
         
 class RatZarrAndGDALRat:
@@ -264,7 +280,7 @@ class RatZarrAndGDALRat:
                             lastselected=None, colNameList=None):
         if colNameList is not None:
             # they have already worked out the columns in the user expression
-            # we muct split the list into Zarr and GDAL columns and process
+            # we must split the list into Zarr and GDAL columns and process
             # separately
             gdalColNameList = []
             zarrColNameList = []
@@ -276,13 +292,13 @@ class RatZarrAndGDALRat:
                                 
             # call the GDAL function to set everything up
             # should be ok even if gdalColNameList is empty
-            globaldict = self.oldViewerRAT.getUserExpressionGlobals(cache, isselected,
+            globaldict = self.oldViewerRAT.getUserExpressionGlobals(cache.gdalRATCache, isselected,
                 queryRow, lastselected, gdalColNameList)
             # now add our cols
             for colName, saneName in (
                     zip(zarrColNameList, self.getSaneColumnNames(zarrColNameList))):
                 # use sane names so as not to confuse Python
-                colArr = cache.cacheDict.get(colName)
+                colArr = cache.zarrcacheDict.get(colName)
                 if colArr is None:
                     raise ValueError(f"Unknown column name '{colName}'")
                 globaldict[saneName] = colArr        
@@ -290,13 +306,13 @@ class RatZarrAndGDALRat:
             return globaldict
         
         # otherwise add all columns (is this code path ever used)?
-        globaldict = self.oldViewerRAT.getUserExpressionGlobals(cache, isselected,
+        globaldict = self.oldViewerRAT.getUserExpressionGlobals(cache.gdalRATCache, isselected,
             queryRow, lastselected, colNameList)
         # add ours
         for colName, saneName in (
                 zip(self.columnNames, self.getSaneColumnNames(self.columnNames))):
             # use sane names so as not to confuse Python
-            colArr = cache.cacheDict.get(colName)
+            colArr = cache.zarrcacheDict.get(colName)
             if colArr is None:
                 raise ValueError(f"Unknown column name '{colName}'")
             globaldict[saneName] = colArr        
@@ -305,9 +321,62 @@ class RatZarrAndGDALRat:
                  
     def evaluateUserSelectExpression(self, imports, expression, isselected, queryRow, 
             lastselected):
-        # pass through. Cache/getUserExpressionGlobals should pull the right data out
-        return self.oldViewerRAT.evaluateUserSelectExpression(imports, expression, 
-            isselected, queryRow, lastselected)
+        """
+        This largely copied from viewerRAT, but some changes have been made to
+        cope with the dual nature of the columns.  
+        """
+        self.oldViewerRAT.newProgress.emit("Evaluating User Expression...")
+        cache = self.getCacheObject(DEFAULT_CACHE_SIZE)
+        nrows = self.getNumRows()
+        
+        # do any imports
+        importsDict = {}
+        exec(imports, importsDict)
+
+        saneColumnNames = set(self.getSaneColumnNames())
+        columnsUsed = self.oldViewerRAT.findVarNamesUsed(expression, saneColumnNames)
+
+        # create the new selected array the full size of the rat
+        # we will fill in each chunk as we go
+        result = numpy.empty(nrows, dtype=bool)
+
+        currRow = 0
+
+        while currRow < nrows:
+            cache.setStartRow(currRow, colName=columnsUsed)
+            length = cache.getLength()
+
+            isselectedSub = isselected[currRow:currRow + length]
+            if lastselected is not None:
+                lastselectedSub = lastselected[currRow:currRow + length]
+            else:
+                lastselectedSub = None
+            globaldict = self.getUserExpressionGlobals(cache, isselectedSub, 
+                                queryRow, lastselectedSub,
+                                colNameList=columnsUsed)
+            globaldict.update(importsDict)
+
+            try:
+                resultSub = eval(expression, globaldict)
+            except Exception as exc:
+                msg = formatException(expression)
+                raise viewererrors.UserExpressionSyntaxError(msg) from exc
+
+            # check type of result
+            if not isinstance(resultSub, numpy.ndarray):
+                msg = 'must return a numpy array'
+                raise viewererrors.UserExpressionTypeError(msg)
+
+            if resultSub.dtype.kind != 'b':
+                msg = 'must return a boolean array'
+                raise viewererrors.UserExpressionTypeError(msg)
+
+            result[currRow:currRow + length] = resultSub
+            currRow += DEFAULT_CACHE_SIZE
+            self.oldViewerRAT.newPercent.emit(int((currRow / nrows) * 100))
+
+        self.oldViewerRAT.endProgress.emit()
+        return result
             
     def evaluateUserEditExpression(self, colName, imports, expression, isselected, 
             queryRow):
