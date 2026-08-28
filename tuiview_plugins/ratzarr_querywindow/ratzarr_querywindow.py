@@ -28,10 +28,12 @@ from osgeo import gdal
 
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtCore import QObject
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QDialog, QFormLayout, QComboBox, QLineEdit
+from PySide6.QtWidgets import QPushButton, QHBoxLayout, QVBoxLayout, QMessageBox
 
 from tuiview import pluginmanager, viewererrors
 from tuiview.viewerRAT import formatException, DEFAULT_INT_FMT, DEFAULT_FLOAT_FMT, DEFAULT_STRING_FMT, DEFAULT_CACHE_SIZE
+from zarr import dtype as zarrdtype
 import ratzarr
 
 
@@ -86,6 +88,16 @@ class ZarrColumnsQuery(QObject):
         self.UnZarrAction.setEnabled(False)
 
         querywindow.toolBar.addAction(self.UnZarrAction)
+
+        addcoliconpath = os.path.join(cdir, 'zarr-pink-stacked-add.svg')
+        self.addcolicon = QIcon(addcoliconpath)
+        
+        self.addColumnAction = QAction(self, triggered=self.addColZarr)
+        self.addColumnAction.setIcon(self.addcolicon)
+        self.addColumnAction.setText("Add a Column to the RatZarr file")
+        self.addColumnAction.setEnabled(False)
+
+        querywindow.toolBar.addAction(self.addColumnAction)
         
     def linkZarr(self):
         rz = ratzarr.RatZarr('/data/git/tuiview-plugins_gillins/myzarr.zarr')
@@ -112,6 +124,8 @@ class ZarrColumnsQuery(QObject):
                         
                         # allow unlinking
                         self.UnZarrAction.setEnabled(True)
+                        # allow adding cols
+                        self.addColumnAction.setEnabled(True)
             else:
                 QMessageBox.critical(self.querywindow, name(), "RatZarr already linked. Unlink first")
         else:
@@ -125,13 +139,32 @@ class ZarrColumnsQuery(QObject):
                 self.querywindow.tableModel.doUpdate(updateHorizHeader=True)
                 self.querywindow.lastLayer.attributes = ratzarr_and_gdal.oldViewerRAT
 
-                # allow unlinking
+                # disallow unlinking
                 self.UnZarrAction.setEnabled(False)
+                # disallow adding cols
+                self.addColumnAction.setEnabled(False)
             else:
                 # should never get here as button should be disabled
                 QMessageBox.critical(self.querywindow, name(), "RatZarr file not linked")
         else:
             QMessageBox.critical(self.querywindow, name(), "Can only link RatZarr to Thematic layers")
+            
+    def addColZarr(self):
+        if self.querywindow.tableModel is not None:
+            if isinstance(self.querywindow.tableModel.attributes, RatZarrAndGDALRat):
+                ratzarr_and_gdal = self.querywindow.tableModel.attributes
+                dlg = AddColumnZarrDialog(self.querywindow)
+                if dlg.exec_() == AddColumnZarrDialog.Accepted:
+                    dtype = dlg.getColumnType()
+                    colname = dlg.getColumnName()
+                    try:
+                        # convert zarr type to numpy type
+                        ztype = dtype()  # create instance first
+                        ratzarr_and_gdal.addColumnToZarr(colname, ztype.to_native_dtype())
+                    except Exception as e:
+                        QMessageBox.critical(self.querywindow, name(), str(e))
+
+                    self.querywindow.tableModel.doUpdate(updateHorizHeader=True)
 
         
 class RatZarrAndGDALRat:
@@ -630,3 +663,56 @@ class ZarrAndRATCache:
             self.zarrObj.writeBlock(colName, data, self.currStartRow)
         else:
             self.gdalRATCache.updateColumn(colName, data, selectionArray)
+
+
+class AddColumnZarrDialog(QDialog):
+    """
+    Dialog that allows a user to select type of new RAT
+    column and enter the name
+    """
+    def __init__(self, parent):
+        QDialog.__init__(self, parent)
+
+        self.typeCombo = QComboBox()
+        # get all the zarr types
+        for name, cls in zarrdtype.data_type_registry.contents.items():
+            self.typeCombo.addItem(name, cls)
+
+        self.nameEdit = QLineEdit()
+
+        self.formLayout = QFormLayout()
+        self.formLayout.addRow("Column Type", self.typeCombo)
+        self.formLayout.addRow("Column Name", self.nameEdit)
+
+        self.okButton = QPushButton()
+        self.okButton.setText("OK")
+        self.okButton.clicked.connect(self.onOK)
+
+        self.cancelButton = QPushButton()
+        self.cancelButton.setText("Cancel")
+        self.cancelButton.clicked.connect(self.reject)
+
+        self.buttonLayout = QHBoxLayout()
+        self.buttonLayout.addWidget(self.okButton)
+        self.buttonLayout.addWidget(self.cancelButton)
+
+        self.mainLayout = QVBoxLayout(self)
+        self.mainLayout.addLayout(self.formLayout)
+        self.mainLayout.addLayout(self.buttonLayout)
+        self.nameEdit.setFocus()
+        self.setLayout(self.mainLayout)
+
+    def onOK(self):
+        if len(self.nameEdit.text()) == 0:
+            QMessageBox.critical(self, name(), "Must enter column name")
+            self.nameEdit.setFocus()
+        else:
+            self.accept()
+
+    def getColumnType(self):
+        index = self.typeCombo.currentIndex()
+        userdata = self.typeCombo.itemData(index)
+        return userdata
+
+    def getColumnName(self):
+        return self.nameEdit.text()
