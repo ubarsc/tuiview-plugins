@@ -22,6 +22,7 @@ https://github.com/ubarsc/tuiview/wiki/Plugins
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 import os
+import csv
 import copy
 import json
 import numpy
@@ -384,7 +385,7 @@ class RatZarrAndGDALRat:
             self.ratzarrObj = ratzarr.RatZarr(self.ratzarrObj.filename, 
                 readOnly=(not self.readOnly), create=False)
         except Exception as e:
-            QMessageBox.critical(self.querywindow, name(), str(e))
+            QMessageBox.critical(None, name(), str(e))
             return
         self.readOnly = not self.readOnly
         
@@ -570,9 +571,55 @@ class RatZarrAndGDALRat:
             self.oldViewerRAT.endProgress.emit()
         
     def exportSelectedRowsToCSV(self, isselected, outDocCsv):
-        # pass through for now. Should we have a separate function for exporting
-        # the zarr columns? Or do both columns?
-        self.oldViewerRAT.exportSelectedRowsToCSV(isselected, outDocCsv)
+        """
+        Export both GDAL and Zarr columns to csv for selected rows
+        """
+        self.oldViewerRAT.newProgress.emit("Exporting to CSV...")
+        cache = self.getCacheObject(DEFAULT_CACHE_SIZE)
+        nrows = self.getNumRows()
+
+        currRow = 0
+        done = False
+
+        with open(outDocCsv, 'wt+', newline='') as csvfile:
+            csvout = csv.writer(csvfile, delimiter=',', quotechar='"', 
+                quoting=csv.QUOTE_MINIMAL)
+                
+            # header
+            col_names = ['row']
+            col_names.extend(self.allColumnNamesInOrder)
+            csvout.writerow(col_names)
+
+            while currRow < nrows and not done:
+                # guess the length
+                isselectedSub = isselected[currRow:currRow + DEFAULT_CACHE_SIZE]
+    
+                if isselectedSub.any():
+                    cache.setStartRow(currRow)
+                    length = cache.getLength()
+                    isselectedSub = isselected[currRow:currRow + length]
+                    rowSub = numpy.arange(currRow, currRow + length)
+                    
+                    cols_to_write = [rowSub[isselectedSub]]
+                    cols_to_format = [DEFAULT_INT_FMT]
+                    for col_name in self.allColumnNamesInOrder:
+                        if col_name in self.columnNames:
+                            cols_to_write.append(cache.zarrcacheDict[col_name][isselectedSub])
+                        else:
+                            cols_to_write.append(cache.gdalRATCache.cacheDict[col_name][isselectedSub])
+                        cols_to_format.append(self.columnFormats[col_name])
+                        
+                    for idx in range(cols_to_write[0].shape[0]):
+                        row = []
+                        for col, fmt in zip(cols_to_write, cols_to_format):
+                            val = col[idx]
+                            row.append(fmt % val)                                    
+                        csvout.writerow(row)
+    
+                currRow += DEFAULT_CACHE_SIZE
+                self.oldViewerRAT.newPercent.emit(int((currRow / nrows) * 100))
+
+        self.oldViewerRAT.endProgress.emit()
         
     def setColumnToConstant(self, colName, value, isselected):
         """
@@ -607,11 +654,11 @@ class RatZarrAndGDALRat:
         string = json.dumps(self.allColumnNamesInOrder)
         gdaldataset.SetMetadataItem(VIEWER_COLUMN_ORDER_METADATA_KEY, string)
         if self.lookupColName is not None:
-            name = str(self.lookupColName)
+            lname = str(self.lookupColName)
         else:
             # remove it
-            name = ''
-        gdaldataset.SetMetadataItem(VIEWER_COLUMN_LOOKUP_METADATA_KEY, name)
+            lname = ''
+        gdaldataset.SetMetadataItem(VIEWER_COLUMN_LOOKUP_METADATA_KEY, lname)
         
     def findColorTableColumns(self, gdalband=None):
         if self.allColumnNamesInOrder is not None:
