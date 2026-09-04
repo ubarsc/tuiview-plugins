@@ -23,16 +23,21 @@ https://github.com/ubarsc/tuiview/wiki/Plugins
 
 import os
 import copy
+import json
 import numpy
 from osgeo import gdal
 
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QDialog, QFormLayout, QComboBox, QLineEdit
+from PySide6.QtWidgets import QFileDialog, QLabel
 from PySide6.QtWidgets import QPushButton, QHBoxLayout, QVBoxLayout, QMessageBox
 
 from tuiview import pluginmanager, viewererrors
-from tuiview.viewerRAT import formatException, DEFAULT_INT_FMT, DEFAULT_FLOAT_FMT, DEFAULT_STRING_FMT, DEFAULT_CACHE_SIZE
+from tuiview.viewerRAT import (formatException, DEFAULT_INT_FMT, DEFAULT_FLOAT_FMT, 
+    DEFAULT_STRING_FMT, DEFAULT_CACHE_SIZE, VIEWER_COLUMN_ORDER_METADATA_KEY,
+    VIEWER_COLUMN_LOOKUP_METADATA_KEY)
+from tuiview.querywindow import ThematicTableModel
 from zarr import dtype as zarrdtype
 import ratzarr
 
@@ -100,9 +105,20 @@ class ZarrColumnsQuery(QObject):
         querywindow.toolBar.addAction(self.addColumnAction)
         
     def linkZarr(self):
-        rz = ratzarr.RatZarr('/data/git/tuiview-plugins_gillins/myzarr.zarr')
+        # rz = ratzarr.RatZarr('/data/git/tuiview-plugins_gillins/myzarr.zarr', 
+        #    readOnly=True, create=False)
+        dlg = OpenZarrDialog(self.querywindow)
+        if dlg.exec_() != OpenZarrDialog.Accepted:
+            return
+        path = dlg.getPath()
+        try:
+            rz = ratzarr.RatZarr(path, readOnly=True, create=False)
+        except Exception as e:
+            QMessageBox.critical(self.querywindow, name(), str(e))
+            return
+        
         # TODO: thematic table model?
-        if self.querywindow.tableModel is not None:
+        if self.querywindow.tableModel is not None and isinstance(self.querywindow.tableModel, ThematicTableModel):
             if not isinstance(self.querywindow.tableModel.attributes, RatZarrAndGDALRat):
                 rat = self.querywindow.tableModel.attributes
                 if rz.getRowCount() != rat.getNumRows():
@@ -115,7 +131,7 @@ class ZarrColumnsQuery(QObject):
                         QMessageBox.critical(self.querywindow, name(), 
                             "Column names must be unique between GDAL and RatZarr files") 
                     else:
-                        ratzarr_and_gdal = RatZarrAndGDALRat(rat, rz)
+                        ratzarr_and_gdal = RatZarrAndGDALRat(rat, rz, self.querywindow.lastLayer.gdalDataset)
                         self.querywindow.tableModel.attributes = ratzarr_and_gdal
                         self.querywindow.tableModel.doUpdate(updateHorizHeader=True)
                         # updating of colnames etc done in doUpdate
@@ -172,6 +188,7 @@ class RatZarrAndGDALRat:
     Class that emulates the interface of tuiview.viewerRAT.ViewerRAT
     but handles a connection to a ratzarr object as well as the GDAL Rat
     """
+    allColumnNamesInOrder = None  # list. Both zarr and gdal
     columnNames = None  # list
     columnTypes = None  # dict
     columnTypesNumpy = None  # dict - numpy dtypes
@@ -185,10 +202,28 @@ class RatZarrAndGDALRat:
     hasRATColorTable = False
     hasOldStyleColorTable = False
     
-    def __init__(self, oldViewerRAT, ratzarrObj):
+    def __init__(self, oldViewerRAT, ratzarrObj, gdaldataset):
         self.oldViewerRAT = oldViewerRAT  # tuiview.viewerRAT.ViewerRAT
         self.ratzarrObj = ratzarrObj
         self.columnNames = ratzarrObj.getColumnNames()
+        prefColOrder, _ = oldViewerRAT.readColumnOrderFromGDAL(gdaldataset)
+        gdal_col_names = oldViewerRAT.getColumnNames()
+        if len(prefColOrder) > 0:
+            self.allColumnNamesInOrder = []
+            for col in prefColOrder:
+                if col in gdal_col_names or col in self.columnNames:
+                    self.allColumnNamesInOrder.append(col)
+            # now go through and add missed
+            for col in gdal_col_names:
+                if col not in self.allColumnNamesInOrder:
+                    self.allColumnNamesInOrder.append(col)
+            for col in self.columnNames:
+                if col not in self.allColumnNamesInOrder:
+                    self.allColumnNamesInOrder.append(col)
+        else:
+            # GDAL, then Zarr
+            self.allColumnNamesInOrder = copy.copy(gdal_col_names)
+            self.allColumnNamesInOrder.extend(self.columnNames)
         self.columnTypes = {}
         self.columnTypesNumpy = {}
         self.columnUsages = {}
@@ -205,13 +240,18 @@ class RatZarrAndGDALRat:
                 self.columnFormats[col] = DEFAULT_FLOAT_FMT
             else:
                 self.columnFormats[col] = DEFAULT_STRING_FMT
+        # also add GDAL ones in
+        for col in gdal_col_names:
+            self.columnTypes[col] = oldViewerRAT.getType(col)
+            self.columnUsages[col] = oldViewerRAT.getUsage(col)
+            self.columnFormats[col] = oldViewerRAT.getFormat(col)
+            # note: ignoring columnTypesNumpy
             
-        self.hasRATColorTable = oldViewerRAT.hasRATColorTable
+        self.findColorTableColumns()
         self.hasOldStyleColorTable = oldViewerRAT.hasOldStyleColorTable
-        self.redColumnIdx = oldViewerRAT.redColumnIdx
-        self.greenColumnIdx = oldViewerRAT.greenColumnIdx
-        self.blueColumnIdx = oldViewerRAT.blueColumnIdx
-        self.alphaColumnIdx = oldViewerRAT.alphaColumnIdx
+        self.gdalColorTable = oldViewerRAT.gdalColorTable
+        
+        self.readOnly = True  # we always start readOnly
         # This just needs to exist so viewerlayers.py/ViewerRasterLayer/changeUpdateAccess
         # can del it. Probably a tider way. This isn't as ideal as all references to the
         # open dataset won't be deleted.
@@ -233,19 +273,13 @@ class RatZarrAndGDALRat:
     def hasAttributes(self):
         return self.oldViewerRAT.hasAttributes() or len(self.columnNames) > 0
         
-    def getColumnNames(self): 
-        # NB: copy list so we don't end up just changing it
-        colnames = copy.copy(self.oldViewerRAT.getColumnNames())
-        colnames.extend(self.columnNames)
-        return colnames
+    def getColumnNames(self):
+        return self.allColumnNamesInOrder
         
     def getSaneColumnNames(self, colNameList=None):
         if colNameList is not None:
             return self.oldViewerRAT.getSaneColumnNames(colNameList)
-        colnames = self.oldViewerRAT.getSaneColumnNames()
-        zarrsanecolnames = self.oldViewerRAT.getSaneColumnNames(colNameList=self.columnNames)
-        colnames.extend(zarrsanecolnames)
-        return colnames
+        return self.oldViewerRAT.getSaneColumnNames(colNameList=self.allColumnNamesInOrder)
         
     def getType(self, colName):
         "return the type for a given column name"
@@ -311,6 +345,7 @@ class RatZarrAndGDALRat:
         self.columnUsages = None  # dict
         self.columnFormats = None  # dict
         self.lookupColName = None  # string
+        self.ratzarrObj = None
         self.oldViewerRAT.clear()
         
     def addColumn(self, colname, coltype):
@@ -326,6 +361,7 @@ class RatZarrAndGDALRat:
         # TODO: link this into the GUI somehow
         self.ratzarrObj.createColumn(colname, numpydtype)
         self.columnNames.append(colname)
+        self.allColumnNamesInOrder.append(colname)
         gdaltype = self.NumpyDTypeToGDALType(numpydtype)
         self.columnTypes[colname] = gdaltype
         self.columnTypesNumpy[colname] = numpydtype
@@ -341,14 +377,35 @@ class RatZarrAndGDALRat:
         # pass through. This will be called when the dataset
         # is re opened in update mode.
         self.oldViewerRAT.readFromGDALBand(gdalband, gdaldataset)
+        # Incredibly, we cannot get the access mode (update or readonly)
+        # from Python. So we have to guess that each time this is
+        # called we have to reopen
+        try:
+            self.ratzarrObj = ratzarr.RatZarr(self.ratzarrObj.filename, 
+                readOnly=(not self.readOnly), create=False)
+        except Exception as e:
+            QMessageBox.critical(self.querywindow, name(), str(e))
+            return
+        self.readOnly = not self.readOnly
+        
         # recreate this so it can be deleted by viewerlayers.py/ViewerRasterLayer/changeUpdateAccess
+        # TODO: fix in tuiview
         self.gdalRAT = 1
 
-    # findColorTableColumns should already be called on viewerRAT on creation
-    
     def arrangeColumnOrder(self, prefColOrder, gdalband):
-        # TODO: how do we save ratzarr cols that have been reordered?
-        self.oldViewerRAT.arrangeColumnOrder(prefColOrder, gdalband)
+        newColOrder = []
+        for pref in prefColOrder:
+            if pref in self.allColumnNamesInOrder:
+                newColOrder.append(pref)
+                self.allColumnNamesInOrder.remove(pref)
+        # ok all columns in prefColOrder should now have
+        # been added to newColOrder. Add the remaining
+        # values from  self.columnNames
+        newColOrder.extend(self.allColumnNamesInOrder)
+        # replace
+        self.allColumnNamesInOrder = newColOrder
+        
+        self.oldViewerRAT.findColorTableColumns(gdalband)
         
     def getUserExpressionGlobals(self, cache, isselected, queryRow, 
                             lastselected=None, colNameList=None):
@@ -544,11 +601,50 @@ class RatZarrAndGDALRat:
         self.oldViewerRAT.endProgress.emit()
             
     def writeColumnOrderToGDAL(self, gdaldataset):
-        # pass through for now, should work out a way of 
-        # saving the zarr col orders also
-        self.oldViewerRAT.writeColumnOrderToGDAL(gdaldataset)
+        # we write the whole thing ourselves, will contain both gdal 
+        # and zarr but that's ok because the oldViewerRAT ignores
+        # any it doesn't have on open
+        string = json.dumps(self.allColumnNamesInOrder)
+        gdaldataset.SetMetadataItem(VIEWER_COLUMN_ORDER_METADATA_KEY, string)
+        if self.lookupColName is not None:
+            name = str(self.lookupColName)
+        else:
+            # remove it
+            name = ''
+        gdaldataset.SetMetadataItem(VIEWER_COLUMN_LOOKUP_METADATA_KEY, name)
         
-    
+    def findColorTableColumns(self, gdalband=None):
+        if self.allColumnNamesInOrder is not None:
+            col = 0
+            for colname in self.allColumnNamesInOrder:
+                usage = self.columnUsages[colname]
+                if usage == gdal.GFU_Red:
+                    self.redColumnIdx = col
+                elif usage == gdal.GFU_Green:
+                    self.greenColumnIdx = col
+                elif usage == gdal.GFU_Blue:
+                    self.blueColumnIdx = col
+                elif usage == gdal.GFU_Alpha:
+                    self.alphaColumnIdx = col
+                col += 1
+
+        # if we have all the columns, we have a color table
+        self.hasRATColorTable = (self.redColumnIdx is not None and 
+                self.greenColumnIdx is not None and 
+                self.blueColumnIdx is not None and
+                self.alphaColumnIdx is not None)
+             
+        if gdalband is not None:
+            # only need to update hasOldStyleColorTable if we have a band
+            # (ie during initialisation)  
+            self.hasOldStyleColorTable = False
+            if not self.hasRATColorTable:
+                ct = gdalband.GetColorTable()
+                if ct is not None:
+                    self.hasOldStyleColorTable = True
+                    self.gdalColorTable = ct
+
+        
 class ZarrAndRATCache:
     """
     Our version of viewerRAT.RATCache that also handles
@@ -672,6 +768,7 @@ class AddColumnZarrDialog(QDialog):
     """
     def __init__(self, parent):
         QDialog.__init__(self, parent)
+        self.setWindowTitle("Add Column to RatZArr file")
 
         self.typeCombo = QComboBox()
         # get all the zarr types
@@ -696,7 +793,7 @@ class AddColumnZarrDialog(QDialog):
         self.buttonLayout.addWidget(self.okButton)
         self.buttonLayout.addWidget(self.cancelButton)
 
-        self.mainLayout = QVBoxLayout(self)
+        self.mainLayout = QVBoxLayout()
         self.mainLayout.addLayout(self.formLayout)
         self.mainLayout.addLayout(self.buttonLayout)
         self.nameEdit.setFocus()
@@ -716,3 +813,73 @@ class AddColumnZarrDialog(QDialog):
 
     def getColumnName(self):
         return self.nameEdit.text()
+
+
+class OpenZarrDialog(QDialog):
+    """
+    A dialog that allows the user to enter a path or browse for a .zarr file
+    """
+    def __init__(self, parent):
+        QDialog.__init__(self, parent)
+        self.setWindowTitle("Select RatZarr File")
+        
+        self.mainLayout = QVBoxLayout()
+        self.pathLayout = QHBoxLayout()
+        
+        self.pathEdit = QLineEdit()
+        self.pathLayout.addWidget(self.pathEdit)
+        self.pathBrowse = QPushButton()
+        self.pathBrowse.setText("Browse")
+        self.pathBrowse.clicked.connect(self.browse)
+        self.pathLayout.addWidget(self.pathBrowse)
+        
+        self.mainLayout.addLayout(self.pathLayout)
+        
+        self.helpLabel = QLabel()
+        self.helpLabel.setText("Enter a path to a .zarr file or browse your filesystem for one." +
+            "\nPrefix path for s3:// for files on an S3 filesystem.")
+        self.mainLayout.addWidget(self.helpLabel)
+
+        self.okButton = QPushButton()
+        self.okButton.setText("OK")
+        self.okButton.clicked.connect(self.onOK)
+
+        self.cancelButton = QPushButton()
+        self.cancelButton.setText("Cancel")
+        self.cancelButton.clicked.connect(self.reject)
+
+        self.buttonLayout = QHBoxLayout()
+        self.buttonLayout.addWidget(self.okButton)
+        self.buttonLayout.addWidget(self.cancelButton)
+
+        self.mainLayout.addLayout(self.buttonLayout)
+        self.pathEdit.setFocus()
+        self.setLayout(self.mainLayout)
+
+    def browse(self):
+        """
+        Browser for a dir
+        """
+        path = QFileDialog.getExistingDirectory(self, 
+            "Select RatZarr dir", os.getcwd())
+        if path != "":
+            if not path.endswith('.zarr'):
+                QMessageBox.critical(self, name(), "Path must end in .zarr")
+            else:
+                self.pathEdit.setText(path)
+        
+    def onOK(self):
+        """
+        OK button clicked - check valid
+        """
+        if len(self.pathEdit.text()) == 0:
+            QMessageBox.critical(self, name(), "Must enter file name")
+            self.nameEdit.setFocus()
+        else:
+            self.accept()
+            
+    def getPath(self):
+        """
+        Get the dir the user has entered
+        """
+        return self.pathEdit.text()
