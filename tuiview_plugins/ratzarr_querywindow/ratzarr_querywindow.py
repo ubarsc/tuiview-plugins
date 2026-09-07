@@ -65,6 +65,14 @@ def action(actioncode, viewer):
         # make sure the object isn't garbage collected
         viewer.plugins.append(handler)
         
+        
+def isQueryWindowReadOnly(querywindow):
+    """
+    Returns True if the dataset is 'locked'
+    (ie readonly) from the state of the GUI
+    """
+    return not querywindow.unlockDatasetAction.isChecked()
+        
 
 class ZarrColumnsQuery(QObject):
     """
@@ -112,8 +120,10 @@ class ZarrColumnsQuery(QObject):
         if dlg.exec_() != OpenZarrDialog.Accepted:
             return
         path = dlg.getPath()
+        ro = isQueryWindowReadOnly(self.querywindow)
+
         try:
-            rz = ratzarr.RatZarr(path, readOnly=True, create=False)
+            rz = ratzarr.RatZarr(path, readOnly=ro, create=False)
         except Exception as e:
             QMessageBox.critical(self.querywindow, name(), str(e))
             return
@@ -132,7 +142,8 @@ class ZarrColumnsQuery(QObject):
                         QMessageBox.critical(self.querywindow, name(), 
                             "Column names must be unique between GDAL and RatZarr files") 
                     else:
-                        ratzarr_and_gdal = RatZarrAndGDALRat(rat, rz, self.querywindow.lastLayer.gdalDataset)
+                        ratzarr_and_gdal = RatZarrAndGDALRat(rat, rz, self.querywindow.lastLayer.gdalDataset, 
+                                self.querywindow)
                         self.querywindow.tableModel.attributes = ratzarr_and_gdal
                         self.querywindow.tableModel.doUpdate(updateHorizHeader=True)
                         # updating of colnames etc done in doUpdate
@@ -203,9 +214,10 @@ class RatZarrAndGDALRat:
     hasRATColorTable = False
     hasOldStyleColorTable = False
     
-    def __init__(self, oldViewerRAT, ratzarrObj, gdaldataset):
+    def __init__(self, oldViewerRAT, ratzarrObj, gdaldataset, querywindow):
         self.oldViewerRAT = oldViewerRAT  # tuiview.viewerRAT.ViewerRAT
         self.ratzarrObj = ratzarrObj
+        self.querywindow = querywindow
         self.columnNames = ratzarrObj.getColumnNames()
         prefColOrder, _ = oldViewerRAT.readColumnOrderFromGDAL(gdaldataset)
         gdal_col_names = oldViewerRAT.getColumnNames()
@@ -251,8 +263,6 @@ class RatZarrAndGDALRat:
         self.findColorTableColumns()
         self.hasOldStyleColorTable = oldViewerRAT.hasOldStyleColorTable
         self.gdalColorTable = oldViewerRAT.gdalColorTable
-        
-        self.readOnly = True  # we always start readOnly
         # This just needs to exist so viewerlayers.py/ViewerRasterLayer/changeUpdateAccess
         # can del it. Probably a tider way. This isn't as ideal as all references to the
         # open dataset won't be deleted.
@@ -379,15 +389,15 @@ class RatZarrAndGDALRat:
         # is re opened in update mode.
         self.oldViewerRAT.readFromGDALBand(gdalband, gdaldataset)
         # Incredibly, we cannot get the access mode (update or readonly)
-        # from Python. So we have to guess that each time this is
-        # called we have to reopen
+        # from Python to pass to ratzarr. Check the GUI state
+        ro = isQueryWindowReadOnly(self.querywindow)
+
         try:
             self.ratzarrObj = ratzarr.RatZarr(self.ratzarrObj.filename, 
-                readOnly=(not self.readOnly), create=False)
+                readOnly=ro, create=False)
         except Exception as e:
-            QMessageBox.critical(None, name(), str(e))
+            QMessageBox.critical(self.querywindow, name(), str(e))
             return
-        self.readOnly = not self.readOnly
         
         # recreate this so it can be deleted by viewerlayers.py/ViewerRasterLayer/changeUpdateAccess
         # TODO: fix in tuiview
