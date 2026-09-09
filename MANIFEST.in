@@ -1,1 +1,2 @@
 include tuiview_plugins/qml_reader/qgis_qml_icon.svg
+include tuiview_plugins/ratzarr_querywindow/zarr-pink-stacked.svg
