@@ -628,12 +628,15 @@ class RatZarrAndGDALRat:
                             cols_to_write.append(cache.zarrcacheDict[col_name][isselectedSub])
                         else:
                             cols_to_write.append(cache.gdalRATCache.cacheDict[col_name][isselectedSub])
-                        cols_to_format.append(self.columnFormats[col_name])
+                        cols_to_format.append(self.getFormat(col_name))
                         
                     for idx in range(cols_to_write[0].shape[0]):
                         row = []
                         for col, fmt in zip(cols_to_write, cols_to_format):
                             val = col[idx]
+                            # deal with width > 1 case
+                            if not numpy.isscalar(val):
+                                val = tuple(val)
                             row.append(fmt % val)                                    
                         csvout.writerow(row)
     
