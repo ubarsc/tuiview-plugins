@@ -42,6 +42,9 @@ from tuiview.querywindow import ThematicTableModel
 from zarr import dtype as zarrdtype
 import ratzarr
 
+WIDTH_GT_1_SEPERATOR = '|'
+"What to use to join the elements when width of ratzarr column is > 1"
+
 
 def name():
     return 'RatZarr Query Window plugin'
@@ -241,12 +244,14 @@ class RatZarrAndGDALRat:
         self.columnTypesNumpy = {}
         self.columnUsages = {}
         self.columnFormats = {}
+        self.columnWidths = {}
         for col in self.columnNames:
             numpydtype = ratzarrObj.getColumnDtype(col)
             gdaltype = self.NumpyDTypeToGDALType(numpydtype)
             self.columnTypes[col] = gdaltype
             self.columnTypesNumpy[col] = numpydtype
             self.columnUsages[col] = gdal.GFU_Generic
+            self.columnWidths[col] = ratzarrObj.getColumnWidth(col)
             if gdaltype == gdal.GFT_Integer:
                 self.columnFormats[col] = DEFAULT_INT_FMT
             elif gdaltype == gdal.GFT_Real:
@@ -258,6 +263,7 @@ class RatZarrAndGDALRat:
             self.columnTypes[col] = oldViewerRAT.getType(col)
             self.columnUsages[col] = oldViewerRAT.getUsage(col)
             self.columnFormats[col] = oldViewerRAT.getFormat(col)
+            self.columnWidths[col] = 1
             # note: ignoring columnTypesNumpy
             
         self.findColorTableColumns()
@@ -307,7 +313,12 @@ class RatZarrAndGDALRat:
     def getFormat(self, colName):
         "return the preferred format string for a given column name"
         if colName in self.columnFormats:
-            return self.columnFormats[colName]
+            fmt = self.columnFormats[colName]
+            width = self.columnWidths[colName]
+            if width > 1:
+                # if this of width > 1, then repeat the format however many times needed
+                return WIDTH_GT_1_SEPERATOR.join([fmt] * width)
+            return fmt
         return self.oldViewerRAT.getFormat(colName)
 
     def setFormat(self, colName, fmt):
@@ -757,7 +768,14 @@ class ZarrAndRATCache:
         """
         if colName in self.zarrColNames:
             data = self.zarrcacheDict[colName]
-            return data[row - self.currStartRow]
+            val = data[row - self.currStartRow]
+            if numpy.isscalar(val):
+                return val
+            # it is width > 1
+            # make it into a tuple so it works with the % operator 
+            # that tuiview uses to apply the formatting
+            # (see getFormat() above)
+            return tuple(val)
         return self.gdalRATCache.getValueFromCol(colName, row)
 
     def autoScrollToIncludeRow(self, row):
