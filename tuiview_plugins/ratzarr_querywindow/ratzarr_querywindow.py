@@ -31,7 +31,7 @@ from osgeo import gdal
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QDialog, QFormLayout, QComboBox, QLineEdit
-from PySide6.QtWidgets import QFileDialog, QLabel
+from PySide6.QtWidgets import QFileDialog, QLabel, QSpinBox
 from PySide6.QtWidgets import QPushButton, QHBoxLayout, QVBoxLayout, QMessageBox
 
 from tuiview import pluginmanager, viewererrors
@@ -187,11 +187,12 @@ class ZarrColumnsQuery(QObject):
                 dlg = AddColumnZarrDialog(self.querywindow)
                 if dlg.exec_() == AddColumnZarrDialog.Accepted:
                     dtype = dlg.getColumnType()
+                    width = dlg.getColumnWidth()
                     colname = dlg.getColumnName()
                     try:
                         # convert zarr type to numpy type
                         ztype = dtype()  # create instance first
-                        ratzarr_and_gdal.addColumnToZarr(colname, ztype.to_native_dtype())
+                        ratzarr_and_gdal.addColumnToZarr(colname, ztype.to_native_dtype(), width)
                     except Exception as e:
                         QMessageBox.critical(self.querywindow, name(), str(e))
 
@@ -209,6 +210,7 @@ class RatZarrAndGDALRat:
     columnTypesNumpy = None  # dict - numpy dtypes
     columnUsages = None  # dict
     columnFormats = None  # dict
+    columnWidths = None  # dict
     lookupColName = None  # string
     redColumnIdx = None  # int
     greenColumnIdx = None  # int
@@ -366,6 +368,7 @@ class RatZarrAndGDALRat:
         self.columnTypesNumpy = None  # dict - numpy dtypes
         self.columnUsages = None  # dict
         self.columnFormats = None  # dict
+        self.columnWidths = None  # dict
         self.lookupColName = None  # string
         self.ratzarrObj = None
         self.oldViewerRAT.clear()
@@ -376,12 +379,11 @@ class RatZarrAndGDALRat:
         """
         self.oldViewerRAT.addColumn(colname, coltype)
         
-    def addColumnToZarr(self, colname, numpydtype):
+    def addColumnToZarr(self, colname, numpydtype, width):
         """
         Add as a zarr column
         """
-        # TODO: link this into the GUI somehow
-        self.ratzarrObj.createColumn(colname, numpydtype)
+        self.ratzarrObj.createColumn(colname, numpydtype, width=width)
         self.columnNames.append(colname)
         self.allColumnNamesInOrder.append(colname)
         gdaltype = self.NumpyDTypeToGDALType(numpydtype)
@@ -394,6 +396,7 @@ class RatZarrAndGDALRat:
             self.columnFormats[colname] = DEFAULT_FLOAT_FMT
         else:
             self.columnFormats[colname] = DEFAULT_STRING_FMT
+        self.columnWidths[colname] = width
 
     def readFromGDALBand(self, gdalband, gdaldataset):
         # pass through. This will be called when the dataset
@@ -853,10 +856,15 @@ class AddColumnZarrDialog(QDialog):
         for dname, cls in zarrdtype.data_type_registry.contents.items():
             self.typeCombo.addItem(dname, cls)
 
+        self.widthSpin = QSpinBox()
+        self.widthSpin.setRange(1, 100)
+        self.widthSpin.setValue(1)
+
         self.nameEdit = QLineEdit()
 
         self.formLayout = QFormLayout()
         self.formLayout.addRow("Column Type", self.typeCombo)
+        self.formLayout.addRow("Column Width", self.widthSpin)
         self.formLayout.addRow("Column Name", self.nameEdit)
 
         self.okButton = QPushButton()
@@ -891,6 +899,9 @@ class AddColumnZarrDialog(QDialog):
 
     def getColumnName(self):
         return self.nameEdit.text()
+        
+    def getColumnWidth(self):
+        return self.widthSpin.value()
 
 
 class OpenZarrDialog(QDialog):
