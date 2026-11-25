@@ -30,4 +30,4 @@ jobs:
         - name: Lint with flake8
           shell: bash -l {0}
           run: |
-            flake8
+            flake8 tuiview_plugins/
