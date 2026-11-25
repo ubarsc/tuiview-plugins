@@ -370,4 +370,4 @@ def run():
         return 0
     else:
         # display GUI
-        return app.exec_()
+        return app.exec()
