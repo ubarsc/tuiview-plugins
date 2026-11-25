@@ -211,7 +211,7 @@ class Recode(QObject):
 
         # display the dialog with the recodes
         dlg = RecodeDialog(self.viewer, self.dataRange)
-        if dlg.exec_() == RecodeDialog.Accepted:
+        if dlg.exec() == RecodeDialog.Accepted:
             recodedValues = dlg.getRecodedValues()
             comment = dlg.getComment()
             
@@ -273,7 +273,7 @@ class Recode(QObject):
 
         # show the dialog
         dlg = RecodeDialog(self.viewer, self.dataRange, comment, oldrecodes)
-        if dlg.exec_() == RecodeDialog.Accepted:
+        if dlg.exec() == RecodeDialog.Accepted:
             recodedValues = dlg.getRecodedValues()
             comment = dlg.getComment()
             

@@ -158,7 +158,7 @@ class TimeseriesDockWidget(QDockWidget):
         """
         dlg = PlotScalingDialog(self, self.plotScaling, self.lastData)
 
-        if dlg.exec_() == PlotScalingDialog.Accepted:
+        if dlg.exec() == PlotScalingDialog.Accepted:
             self.plotScaling = dlg.getScale()
             # re-plot the 'last' data
             self.plotData(self.lastData, self.lastSteps)

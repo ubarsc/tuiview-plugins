@@ -120,7 +120,7 @@ class ZarrColumnsQuery(QObject):
         # rz = ratzarr.RatZarr('/data/git/tuiview-plugins_gillins/myzarr.zarr', 
         #    readOnly=True, create=False)
         dlg = OpenZarrDialog(self.querywindow)
-        if dlg.exec_() != OpenZarrDialog.Accepted:
+        if dlg.exec() != OpenZarrDialog.Accepted:
             return
         path = dlg.getPath()
         ro = isQueryWindowReadOnly(self.querywindow)
@@ -185,7 +185,7 @@ class ZarrColumnsQuery(QObject):
             if isinstance(self.querywindow.tableModel.attributes, RatZarrAndGDALRat):
                 ratzarr_and_gdal = self.querywindow.tableModel.attributes
                 dlg = AddColumnZarrDialog(self.querywindow)
-                if dlg.exec_() == AddColumnZarrDialog.Accepted:
+                if dlg.exec() == AddColumnZarrDialog.Accepted:
                     dtype = dlg.getColumnType()
                     width = dlg.getColumnWidth()
                     colname = dlg.getColumnName()
